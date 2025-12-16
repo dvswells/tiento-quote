@@ -258,7 +258,7 @@ You are implementing **Tiento Quote v0.1** in Python. Create the repo skeleton a
 
 ---
 
-### `text` Prompt 02 — Shared domain models (dataclasses)
+### `text` Prompt 02 — Shared domain models (dataclasses) ✅ COMPLETE
 
 Create `modules/domain.py` with shared dataclasses that will be used across the app:
 
@@ -278,6 +278,17 @@ Create `modules/domain.py` with shared dataclasses that will be used across the 
 **Acceptance:**
 
 * All tests pass; no business logic yet.
+
+**Implementation Notes:**
+- Created modules/domain.py with 5 dataclasses
+- PartFeatures: 13 fields covering all features from spec, all default to 0
+- FeatureConfidence: 5 confidence scores (0.0-1.0)
+- DfmIssue: severity (Literal type) + message
+- QuoteResult: pricing with breakdown dict
+- ProcessingResult: complete result container with optional quote
+- All dataclasses have to_dict() and from_dict() methods
+- Comprehensive test suite with 27 tests covering defaults, custom values, serialization, and round-trips
+- All tests passing (30/30 total)
 
 ---
 
