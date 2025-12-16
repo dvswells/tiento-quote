@@ -368,7 +368,7 @@ Create `modules/pricing_config.py`:
 
 ---
 
-### `text` Prompt 05 — SQLite DB module (training schema)
+### `text` Prompt 05 — SQLite DB module (training schema) ✅ COMPLETE
 
 Create `modules/db.py`:
 
@@ -387,6 +387,25 @@ Create `modules/db.py`:
 **Acceptance:**
 
 * No Streamlit dependency in DB code.
+
+**Implementation Notes:**
+- Created modules/db.py with 4 functions for training data management
+- connect(): Simple SQLite connection wrapper
+- ensure_schema(): Creates training_parts table with exact schema from spec:
+  * 19 columns: id, file_path, upload_date, quantity, pricing, features
+  * Auto-incrementing ID
+  * Proper defaults (0 for optional feature fields)
+  * Idempotent (safe to call multiple times)
+- insert_training_part(): Dynamic INSERT based on row_dict keys
+- fetch_training_parts(): Returns pandas DataFrame with all columns
+- No Streamlit dependency - pure SQLite + pandas
+- Comprehensive test suite (16 tests):
+  * Connection creation and reuse
+  * Schema validation (correct columns)
+  * Insert minimal and full feature sets
+  * Fetch empty and populated tables
+  * Integration test for complete workflow
+- All tests passing (83/83 total)
 
 ---
 
