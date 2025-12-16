@@ -489,7 +489,7 @@ Create `modules/file_handler.py` (start small):
 
 ---
 
-### `text` Prompt 08 — Store upload to /uploads with UUID
+### `text` Prompt 08 — Store upload to /uploads with UUID ✅ COMPLETE
 
 Extend `modules/file_handler.py`:
 
@@ -504,6 +504,28 @@ Extend `modules/file_handler.py`:
 **Acceptance:**
 
 * No STEP parsing yet in this step.
+
+**Implementation Notes:**
+- Extended modules/file_handler.py with store_upload function
+- store_upload(file_bytes, original_filename, uploads_dir):
+  * Generates UUID v4 using uuid.uuid4()
+  * Extracts extension from original filename (preserves .step or .stp)
+  * Creates filename as {uuid}{extension}
+  * Ensures uploads directory exists with os.makedirs(exist_ok=True)
+  * Writes file bytes in binary mode
+  * Returns tuple: (part_id, stored_path)
+- No STEP parsing in this implementation (deferred to Prompt 09)
+- Comprehensive test suite (12 tests):
+  * File creation and existence
+  * UUID validation (can be parsed as UUID)
+  * Extension preservation (.step and .stp)
+  * Byte-for-byte content verification
+  * Directory creation (including nested non-existent paths)
+  * Multiple uploads get unique UUIDs
+  * Large files (1MB) and empty files
+  * Binary content with null bytes
+  * Filename format: UUID.extension
+- All tests passing (138/138 total)
 
 ---
 
