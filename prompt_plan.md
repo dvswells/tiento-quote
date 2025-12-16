@@ -645,26 +645,49 @@ Extend `modules/file_handler.py`:
 
 ### `text` Prompt 12 — Pricing engine v0 (config + normalization + min order)
 
-Create `modules/pricing_engine.py`:
+✅ **COMPLETE**
 
-* `normalize_features(features_dict, mean, std) -> dict`
-* `calculate_quote(part_features: PartFeatures, quantity: int, pricing_config: dict) -> QuoteResult`
-  Rules:
-* if `r_squared == 0.0`: return/raise “System not ready - training required”
-* quantity > 50: return a result with an error/message flag (no quote)
-* apply minimum order price (€30 per order)
+**Implementation:**
+- Created `modules/pricing_engine.py` with pricing calculation logic
+- Added `ModelNotReadyError` and `InvalidQuantityError` custom exceptions
+- Implemented `normalize_features(features_dict, mean, std)`: Standard scaler normalization formula (x - mean) / std
+- Implemented `calculate_quote(part_features, quantity, pricing_config)`: Linear pricing model with validation
 
-**TDD:**
+**Pricing Logic:**
+- Validates model is trained: r_squared > 0.0, else raises "System not ready - training required"
+- Validates quantity range: 1-50, else raises error with quantity limits message
+- Extracts 10 pricing features from PartFeatures (volume, holes, pockets)
+- Normalizes features using scaler_mean and scaler_std from config
+- Calculates predicted price: base_price + sum(coefficient × normalized_feature)
+- Clamps negative predictions to 0.0 (non-negative prices)
+- Applies minimum order price (€30) when calculated_total < minimum
+- Recalculates price_per_unit when minimum applies
+- Returns QuoteResult with stable breakdown dict
 
-* Use a small deterministic config fixture and assert:
+**Breakdown Dictionary:**
+- base_price: Base price from config
+- feature_contribution: Sum of all feature contributions
+- predicted_price_per_unit: Predicted price before minimum
+- calculated_total: Total before minimum (price × quantity)
+- minimum_order_price: Minimum applied amount (0 if not applied)
+- final_total: Final total price
 
-  * min order applies
-  * quantity scaling works
-  * “model not trained” path triggers
+**Test Coverage (18 tests):**
+- Feature normalization: simple values, zero mean, multiple features, dict return
+- Untrained model error: r_squared = 0.0 raises ModelNotReadyError
+- Quantity validation: <1, >50 raises InvalidQuantityError; 1 and 50 pass
+- Minimum order logic: applies for small orders, doesn't apply for large orders
+- Quantity scaling: price_per_unit consistent, total scales correctly
+- Breakdown validation: stable keys, includes base_price, deterministic
+- QuoteResult structure: all required fields present
 
-**Acceptance:**
+**Files:**
+- `modules/pricing_engine.py` (156 lines)
+- `tests/test_pricing_engine.py` (325 lines, 18 tests)
 
-* Produces a stable breakdown dict.
+**Tests:** All 196 tests passing (178 previous + 18 new)
+
+**Commits:** 41d08b6
 
 ---
 
