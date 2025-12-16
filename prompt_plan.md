@@ -328,7 +328,7 @@ Create `modules/settings.py` with a `Settings` dataclass that reads:
 
 ---
 
-### `text` Prompt 04 — Pricing config loader + validation
+### `text` Prompt 04 — Pricing config loader + validation ✅ COMPLETE
 
 Create `modules/pricing_config.py`:
 
@@ -348,6 +348,23 @@ Create `modules/pricing_config.py`:
 **Acceptance:**
 
 * Loader returns a validated dict ready for pricing.
+
+**Implementation Notes:**
+- Created modules/pricing_config.py with load_pricing_config() function
+- Defined REQUIRED_COEFFICIENT_FEATURES constant with 10 pricing features:
+  * volume, through_hole_count, blind_hole_count
+  * blind_hole_avg_depth_to_diameter, blind_hole_max_depth_to_diameter
+  * pocket_count, pocket_total_volume, pocket_avg_depth, pocket_max_depth
+  * non_standard_hole_count
+- Custom PricingConfigError exception for clear error messages
+- Strict validation of all required keys and features
+- Created config/pricing_coefficients.json template (untrained model)
+- 15 comprehensive tests covering:
+  * Valid configs load successfully (including R²=0)
+  * Missing keys raise clear exceptions
+  * Missing features in coefficients raise
+  * Invalid JSON and file not found handled
+- All tests passing (67/67 total)
 
 ---
 
