@@ -843,18 +843,46 @@ Extend `modules/file_handler.py`:
 
 ### `text` Prompt 16 — Three.js viewer component (HTML builder)
 
-In `modules/visualization.py`, add:
+✅ **COMPLETE**
 
-* `build_threejs_viewer_html(stl_bytes_or_url) -> str`
-  Keep it self-contained HTML using CDN `three.js`, `STLLoader`, `OrbitControls`.
+**Implementation:**
+- Added `build_threejs_viewer_html(stl_bytes_or_url)` to `modules/visualization.py`
+- Generates self-contained HTML with Three.js viewer from CDN libraries
+- Uses Three.js v0.158.0 from cdn.jsdelivr.net (STLLoader + OrbitControls)
 
-**TDD:**
+**Viewer Features:**
+- **Interactive controls**: OrbitControls for rotate/zoom/pan (damping enabled)
+- **Auto-centering**: Geometry centered at origin with camera positioned automatically
+- **Lighting**: Ambient light + 2 directional lights for 3D depth perception
+- **Material**: PhongMaterial with blue color (0x5555ff) and specular highlights
+- **Responsive**: Handles window resize events
+- **Camera**: PerspectiveCamera with distance calculated from bounding box
 
-* Unit test that the HTML contains the expected loader/control strings and a placeholder for STL source.
+**HTML Structure:**
+- Complete HTML document with DOCTYPE
+- Embedded CSS for full-height container (600px)
+- Three.js libraries loaded from CDN (no local dependencies)
+- Inline JavaScript with scene setup, loader, and animation loop
+- STL source injected into loader URL parameter
 
-**Acceptance:**
+**Test Coverage (11 tests):**
+- Returns string with content
+- HTML structure validation (html/head/body tags)
+- CDN verification (Three.js from jsdelivr/unpkg/cdnjs)
+- STLLoader and OrbitControls present in HTML
+- STL source placeholder correctly embedded
+- Works with URLs, data URLs, and file paths
+- Self-contained (no local script file references)
+- Has container div for rendering
+- Contains script tags
 
-* Streamlit can render it via `components.html()`.
+**Files:**
+- `modules/visualization.py` (245 lines, +146 new)
+- `tests/test_visualization.py` (305 lines, +90 new)
+
+**Tests:** All 237 tests passing (226 previous + 11 new)
+
+**Commits:** c5640b5
 
 ---
 
