@@ -3,11 +3,15 @@ Tiento Quote v0.1 - CNC Machining Calculator
 Streamlit web application for instant CNC machining quotes.
 """
 import streamlit as st
+import streamlit.components.v1 as components
 import os
 import tempfile
+import base64
 from modules.pipeline import process_quote
 from modules.feature_detector import BoundingBoxLimitError
 from modules.pricing_engine import ModelNotReadyError, InvalidQuantityError
+from modules.visualization import step_to_stl, compute_adaptive_deflection, build_threejs_viewer_html
+from modules.settings import get_settings
 
 
 # Page configuration
@@ -96,13 +100,55 @@ if uploaded_file is not None:
                 result = process_quote(tmp_step_path, quantity, pricing_config_path)
                 st.success("✓ Complete")
 
-        # Clean up temporary file
+        # Generate STL for 3D visualization
+        settings = get_settings()
+        tmp_stl_path = None
+        try:
+            # Create temp STL file path
+            tmp_stl_path = os.path.join(
+                settings.TEMP_PATH,
+                f"{result.part_id}.stl"
+            )
+
+            # Compute adaptive deflection based on part size
+            linear_deflection, angular_deflection = compute_adaptive_deflection(result.features)
+
+            # Convert STEP to STL
+            step_to_stl(tmp_step_path, tmp_stl_path, linear_deflection, angular_deflection)
+
+        except Exception as e:
+            # If STL generation fails, log but don't block quote display
+            st.warning(f"Could not generate 3D preview: {str(e)}")
+            tmp_stl_path = None
+
+        # Clean up temporary STEP file
         os.unlink(tmp_step_path)
 
         st.divider()
 
         # Display results
         st.header("Quote Results")
+
+        # 3D Viewer (if STL was generated successfully)
+        if tmp_stl_path and os.path.exists(tmp_stl_path):
+            st.subheader("3D Model Preview")
+            try:
+                # Read STL file as bytes and convert to data URL
+                with open(tmp_stl_path, 'rb') as f:
+                    stl_bytes = f.read()
+                    stl_base64 = base64.b64encode(stl_bytes).decode('utf-8')
+                    stl_data_url = f"data:application/octet-stream;base64,{stl_base64}"
+
+                # Build Three.js viewer HTML with data URL
+                viewer_html = build_threejs_viewer_html(stl_data_url)
+
+                # Render viewer
+                components.html(viewer_html, height=620)
+
+            except Exception as e:
+                st.warning(f"Could not display 3D preview: {str(e)}")
+
+            st.divider()
 
         # Create two columns for layout
         col1, col2 = st.columns(2)
@@ -189,32 +235,59 @@ Prices exclude VAT and shipping.
         # Part ID for reference
         st.caption(f"Part ID: {result.part_id}")
 
+        # Clean up temporary STL file (best-effort)
+        if tmp_stl_path and os.path.exists(tmp_stl_path):
+            try:
+                os.unlink(tmp_stl_path)
+            except Exception:
+                pass  # Best-effort cleanup, don't fail if cleanup fails
+
     except BoundingBoxLimitError as e:
         st.error(f"⚠️ {str(e)}")
-        # Clean up temporary file
+        # Clean up temporary files
         if 'tmp_step_path' in locals() and os.path.exists(tmp_step_path):
             os.unlink(tmp_step_path)
+        if 'tmp_stl_path' in locals() and tmp_stl_path and os.path.exists(tmp_stl_path):
+            try:
+                os.unlink(tmp_stl_path)
+            except Exception:
+                pass
 
     except ModelNotReadyError as e:
         st.error(f"⚠️ {str(e)}")
         st.info("The pricing model needs to be trained before quotes can be generated. Please contact the administrator.")
-        # Clean up temporary file
+        # Clean up temporary files
         if 'tmp_step_path' in locals() and os.path.exists(tmp_step_path):
             os.unlink(tmp_step_path)
+        if 'tmp_stl_path' in locals() and tmp_stl_path and os.path.exists(tmp_stl_path):
+            try:
+                os.unlink(tmp_stl_path)
+            except Exception:
+                pass
 
     except InvalidQuantityError as e:
         st.error(f"⚠️ {str(e)}")
         st.info("Please enter a quantity between 1 and 50.")
-        # Clean up temporary file
+        # Clean up temporary files
         if 'tmp_step_path' in locals() and os.path.exists(tmp_step_path):
             os.unlink(tmp_step_path)
+        if 'tmp_stl_path' in locals() and tmp_stl_path and os.path.exists(tmp_stl_path):
+            try:
+                os.unlink(tmp_stl_path)
+            except Exception:
+                pass
 
     except Exception as e:
         st.error(f"⚠️ An error occurred while processing your file: {str(e)}")
         st.info("Please ensure your file is a valid STEP format and try again. If the problem persists, contact us at david@wellsglobal.eu")
-        # Clean up temporary file
+        # Clean up temporary files
         if 'tmp_step_path' in locals() and os.path.exists(tmp_step_path):
             os.unlink(tmp_step_path)
+        if 'tmp_stl_path' in locals() and tmp_stl_path and os.path.exists(tmp_stl_path):
+            try:
+                os.unlink(tmp_stl_path)
+            except Exception:
+                pass
 
 else:
     st.info("👆 Upload a STEP file to get started")
