@@ -292,7 +292,7 @@ Create `modules/domain.py` with shared dataclasses that will be used across the 
 
 ---
 
-### `text` Prompt 03 — Settings + env var handling
+### `text` Prompt 03 — Settings + env var handling ✅ COMPLETE
 
 Create `modules/settings.py` with a `Settings` dataclass that reads:
 
@@ -309,6 +309,22 @@ Create `modules/settings.py` with a `Settings` dataclass that reads:
 **Acceptance:**
 
 * Other modules can import `get_settings()` without side effects.
+
+**Implementation Notes:**
+- Created modules/settings.py with Settings dataclass
+- Environment variable support with sensible defaults:
+  * DATABASE_PATH: "training/training_data.db"
+  * UPLOADS_PATH: "uploads"
+  * TEMP_PATH: "temp"
+  * MAX_UPLOAD_SIZE: 52428800 (50MB)
+- Hardcoded values from spec (not overridable):
+  * BOUNDING_BOX_MAX: 600×400×500mm
+  * QUANTITY limits: 1-50
+  * MINIMUM_ORDER_PRICE: €30
+- Implemented get_settings() with global caching
+- __post_init__ reads env vars and overrides defaults
+- 22 comprehensive tests covering defaults, overrides, caching, validation
+- All tests passing (52/52 total)
 
 ---
 
