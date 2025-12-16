@@ -231,7 +231,7 @@ At this point, each step is:
 
 ## Prompts for a code-generating LLM (test-driven, incremental)
 
-### `text` Prompt 01 — Project scaffold + test harness
+### `text` Prompt 01 — Project scaffold + test harness ✅ COMPLETE
 
 You are implementing **Tiento Quote v0.1** in Python. Create the repo skeleton and testing harness.
 
@@ -246,6 +246,15 @@ You are implementing **Tiento Quote v0.1** in Python. Create the repo skeleton a
 
 * `pytest` runs successfully with a placeholder test.
 * CI config exists and points to `pytest`.
+
+**Implementation Notes:**
+- Created full project structure with modules/, training/, tests/, config/
+- Added pytest.ini with sensible defaults
+- Created GitHub Actions CI workflow (.github/workflows/ci.yml)
+- Added requirements.txt with all production dependencies
+- Added requirements-dev.txt with testing/linting tools
+- Created 3 placeholder tests - all passing
+- Added .gitignore for Python project
 
 ---
 
