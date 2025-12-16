@@ -448,7 +448,7 @@ Create `modules/cad_io.py`:
 
 ---
 
-### `text` Prompt 07 — File validation helpers (extension/size)
+### `text` Prompt 07 — File validation helpers (extension/size) ✅ COMPLETE
 
 Create `modules/file_handler.py` (start small):
 
@@ -464,6 +464,28 @@ Create `modules/file_handler.py` (start small):
 **Acceptance:**
 
 * Pure functions; no filesystem yet.
+
+**Implementation Notes:**
+- Created modules/file_handler.py with file validation helpers
+- Custom exceptions with spec-aligned messages:
+  * InvalidExtensionError: "Invalid file format - please upload .STEP file"
+  * FileSizeError: "File size exceeds 50MB limit" (or dynamic for other limits)
+- validate_extension(filename):
+  * Case-insensitive validation for .step and .stp
+  * Handles multiple dots in filename correctly
+  * Pure function - no filesystem access
+- validate_size(num_bytes, max_bytes):
+  * Boundary testing: size <= max_bytes passes, size > max_bytes raises
+  * Special handling for 50MB limit from spec
+  * Pure function - no side effects
+- Comprehensive test suite (29 tests):
+  * Valid extensions: .step, .STEP, .stp, .STP (case-insensitive)
+  * Invalid extensions: .stl, .obj, .txt, no extension
+  * Size validation: within limit, at limit, 1 byte over, far over
+  * Boundary testing verified
+  * Error message validation (spec-aligned)
+  * Pure function verification (no filesystem access)
+- All tests passing (126/126 total)
 
 ---
 
