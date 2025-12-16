@@ -6,6 +6,12 @@ Detects geometric features from STEP files for pricing calculations.
 from typing import Tuple
 from modules.cad_io import load_step
 from modules.domain import PartFeatures, FeatureConfidence
+from modules.settings import Settings
+
+
+class BoundingBoxLimitError(Exception):
+    """Raised when part exceeds maximum bounding box dimensions."""
+    pass
 
 
 def detect_bbox_and_volume(step_path: str) -> Tuple[PartFeatures, FeatureConfidence]:
@@ -73,3 +79,40 @@ def detect_bbox_and_volume(step_path: str) -> Tuple[PartFeatures, FeatureConfide
     )
 
     return features, confidence
+
+
+def validate_bounding_box_limits(features: PartFeatures, settings: Settings) -> None:
+    """
+    Validate that part dimensions don't exceed maximum bounding box limits.
+
+    Maximum dimensions are defined in settings (default: 600×400×500mm).
+    This validation should be performed before expensive feature detection operations.
+
+    Args:
+        features: Part features including bounding box dimensions
+        settings: Application settings with bounding box limits
+
+    Raises:
+        BoundingBoxLimitError: If any dimension exceeds the maximum limits
+
+    Example:
+        >>> features = PartFeatures(bounding_box_x=100, bounding_box_y=200, bounding_box_z=300)
+        >>> settings = get_settings()
+        >>> validate_bounding_box_limits(features, settings)  # Passes
+        >>>
+        >>> large_features = PartFeatures(bounding_box_x=700, bounding_box_y=200, bounding_box_z=300)
+        >>> validate_bounding_box_limits(large_features, settings)  # Raises BoundingBoxLimitError
+    """
+    # Check if any dimension exceeds limits
+    if (features.bounding_box_x > settings.BOUNDING_BOX_MAX_X or
+        features.bounding_box_y > settings.BOUNDING_BOX_MAX_Y or
+        features.bounding_box_z > settings.BOUNDING_BOX_MAX_Z):
+
+        # Raise error with spec-aligned message
+        raise BoundingBoxLimitError(
+            f"Part exceeds maximum dimensions of "
+            f"{int(settings.BOUNDING_BOX_MAX_X)}×"
+            f"{int(settings.BOUNDING_BOX_MAX_Y)}×"
+            f"{int(settings.BOUNDING_BOX_MAX_Z)}mm. "
+            f"Please contact us for large part quoting at david@wellsglobal.eu"
+        )

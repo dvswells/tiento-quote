@@ -6,7 +6,11 @@ import os
 import tempfile
 import pytest
 import cadquery as cq
-from modules.feature_detector import detect_bbox_and_volume
+from modules.feature_detector import (
+    detect_bbox_and_volume,
+    validate_bounding_box_limits,
+    BoundingBoxLimitError,
+)
 from modules.domain import PartFeatures, FeatureConfidence
 
 
@@ -191,3 +195,199 @@ class TestDetectBboxAndVolume:
         features, confidence = detect_bbox_and_volume(box_10x20x30)
 
         assert features.volume > 0
+
+
+class TestValidateBoundingBoxLimits:
+    """Test bounding box limit validation (600×400×500mm)."""
+
+    def test_import_function(self):
+        """Test that validate_bounding_box_limits can be imported."""
+        assert callable(validate_bounding_box_limits)
+
+    def test_part_within_limits_passes(self):
+        """Test that part within limits does not raise exception."""
+        from modules.settings import get_settings
+
+        # Create features for a small part (100×200×300mm)
+        features = PartFeatures(
+            bounding_box_x=100.0,
+            bounding_box_y=200.0,
+            bounding_box_z=300.0,
+        )
+        settings = get_settings()
+
+        # Should not raise exception
+        validate_bounding_box_limits(features, settings)
+
+    def test_part_exactly_at_x_limit_passes(self):
+        """Test that part exactly at X limit (600mm) passes."""
+        from modules.settings import get_settings
+
+        features = PartFeatures(
+            bounding_box_x=600.0,
+            bounding_box_y=200.0,
+            bounding_box_z=300.0,
+        )
+        settings = get_settings()
+
+        # Should not raise exception
+        validate_bounding_box_limits(features, settings)
+
+    def test_part_exactly_at_y_limit_passes(self):
+        """Test that part exactly at Y limit (400mm) passes."""
+        from modules.settings import get_settings
+
+        features = PartFeatures(
+            bounding_box_x=100.0,
+            bounding_box_y=400.0,
+            bounding_box_z=300.0,
+        )
+        settings = get_settings()
+
+        # Should not raise exception
+        validate_bounding_box_limits(features, settings)
+
+    def test_part_exactly_at_z_limit_passes(self):
+        """Test that part exactly at Z limit (500mm) passes."""
+        from modules.settings import get_settings
+
+        features = PartFeatures(
+            bounding_box_x=100.0,
+            bounding_box_y=200.0,
+            bounding_box_z=500.0,
+        )
+        settings = get_settings()
+
+        # Should not raise exception
+        validate_bounding_box_limits(features, settings)
+
+    def test_part_at_all_limits_passes(self):
+        """Test that part at all limits (600×400×500mm) passes."""
+        from modules.settings import get_settings
+
+        features = PartFeatures(
+            bounding_box_x=600.0,
+            bounding_box_y=400.0,
+            bounding_box_z=500.0,
+        )
+        settings = get_settings()
+
+        # Should not raise exception
+        validate_bounding_box_limits(features, settings)
+
+    def test_part_exceeding_x_limit_raises(self):
+        """Test that part exceeding X limit raises exception."""
+        from modules.settings import get_settings
+
+        # X dimension: 601mm (exceeds 600mm limit)
+        features = PartFeatures(
+            bounding_box_x=601.0,
+            bounding_box_y=200.0,
+            bounding_box_z=300.0,
+        )
+        settings = get_settings()
+
+        with pytest.raises(BoundingBoxLimitError) as exc_info:
+            validate_bounding_box_limits(features, settings)
+
+        # Check error message mentions dimensions
+        error_msg = str(exc_info.value)
+        assert "600" in error_msg or "400" in error_msg or "500" in error_msg
+
+    def test_part_exceeding_y_limit_raises(self):
+        """Test that part exceeding Y limit raises exception."""
+        from modules.settings import get_settings
+
+        # Y dimension: 401mm (exceeds 400mm limit)
+        features = PartFeatures(
+            bounding_box_x=100.0,
+            bounding_box_y=401.0,
+            bounding_box_z=300.0,
+        )
+        settings = get_settings()
+
+        with pytest.raises(BoundingBoxLimitError):
+            validate_bounding_box_limits(features, settings)
+
+    def test_part_exceeding_z_limit_raises(self):
+        """Test that part exceeding Z limit raises exception."""
+        from modules.settings import get_settings
+
+        # Z dimension: 501mm (exceeds 500mm limit)
+        features = PartFeatures(
+            bounding_box_x=100.0,
+            bounding_box_y=200.0,
+            bounding_box_z=501.0,
+        )
+        settings = get_settings()
+
+        with pytest.raises(BoundingBoxLimitError):
+            validate_bounding_box_limits(features, settings)
+
+    def test_part_slightly_exceeding_x_limit_raises(self):
+        """Test that part slightly exceeding X limit (by 0.1mm) raises exception."""
+        from modules.settings import get_settings
+
+        # X dimension: 600.1mm (slightly exceeds 600mm limit)
+        features = PartFeatures(
+            bounding_box_x=600.1,
+            bounding_box_y=200.0,
+            bounding_box_z=300.0,
+        )
+        settings = get_settings()
+
+        with pytest.raises(BoundingBoxLimitError):
+            validate_bounding_box_limits(features, settings)
+
+    def test_part_exceeding_multiple_limits_raises(self):
+        """Test that part exceeding multiple limits raises exception."""
+        from modules.settings import get_settings
+
+        features = PartFeatures(
+            bounding_box_x=700.0,  # Exceeds 600mm
+            bounding_box_y=500.0,  # Exceeds 400mm
+            bounding_box_z=600.0,  # Exceeds 500mm
+        )
+        settings = get_settings()
+
+        with pytest.raises(BoundingBoxLimitError):
+            validate_bounding_box_limits(features, settings)
+
+    def test_error_message_is_spec_aligned(self):
+        """Test that error message matches spec exactly."""
+        from modules.settings import get_settings
+
+        features = PartFeatures(
+            bounding_box_x=601.0,
+            bounding_box_y=200.0,
+            bounding_box_z=300.0,
+        )
+        settings = get_settings()
+
+        with pytest.raises(BoundingBoxLimitError) as exc_info:
+            validate_bounding_box_limits(features, settings)
+
+        # Spec says: "Part exceeds maximum dimensions of 600×400×500mm.
+        # Please contact us for large part quoting at david@wellsglobal.eu"
+        error_msg = str(exc_info.value)
+        assert "Part exceeds maximum dimensions" in error_msg
+        assert "600" in error_msg and "400" in error_msg and "500" in error_msg
+        assert "david@wellsglobal.eu" in error_msg
+
+    def test_error_message_contains_contact_info(self):
+        """Test that error message contains contact information."""
+        from modules.settings import get_settings
+
+        features = PartFeatures(
+            bounding_box_x=700.0,
+            bounding_box_y=200.0,
+            bounding_box_z=300.0,
+        )
+        settings = get_settings()
+
+        with pytest.raises(BoundingBoxLimitError) as exc_info:
+            validate_bounding_box_limits(features, settings)
+
+        error_msg = str(exc_info.value)
+        assert "contact" in error_msg.lower()
+        assert "david@wellsglobal.eu" in error_msg
