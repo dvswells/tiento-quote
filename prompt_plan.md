@@ -608,18 +608,38 @@ Extend `modules/file_handler.py`:
 
 ### `text` Prompt 11 — Bounding box limit validation (600×400×500)
 
-Add `validate_bounding_box_limits(features, settings)` in `feature_detector.py` or `file_handler.py` (your choice, but keep responsibilities clear).
+✅ **COMPLETE**
 
-* Reject oversized parts with the exact spec message.
+**Implementation:**
+- Extended `modules/feature_detector.py` with `validate_bounding_box_limits(features, settings)`
+- Added `BoundingBoxLimitError` custom exception
+- Validates part dimensions against settings limits (600×400×500mm)
+- Uses Settings dataclass to read BOUNDING_BOX_MAX_X/Y/Z values
+- Raises exception with spec-aligned error message including contact email
+- Designed to be called after bbox detection but before expensive operations (holes/pockets)
 
-**TDD:**
+**Validation Logic:**
+- Checks if any dimension (X, Y, or Z) exceeds maximum limits
+- Uses > comparison (parts exactly at limit pass, anything over fails)
+- Error message: "Part exceeds maximum dimensions of 600×400×500mm. Please contact us for large part quoting at david@wellsglobal.eu"
 
-* Test a part slightly exceeding X fails.
-* Test a part at the exact limit passes.
+**Test Coverage (13 tests):**
+- Parts within limits pass (100×200×300mm)
+- Parts exactly at limits pass (600.0, 400.0, 500.0mm individually and combined)
+- Parts exceeding X limit fail (601mm, 600.1mm)
+- Parts exceeding Y limit fail (401mm)
+- Parts exceeding Z limit fail (501mm)
+- Parts exceeding multiple limits fail (700×500×600mm)
+- Error message spec validation (dimensions + contact email)
+- Exception type validation (BoundingBoxLimitError)
 
-**Acceptance:**
+**Files:**
+- `modules/feature_detector.py` (119 lines, +43 lines)
+- `tests/test_feature_detector.py` (403 lines, +209 lines)
 
-* This runs before any expensive detection.
+**Tests:** All 178 tests passing (165 previous + 13 new)
+
+**Commits:** 9e8379f
 
 ---
 
