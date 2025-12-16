@@ -6,6 +6,7 @@ Provides validation helpers and upload storage for file uploads.
 import os
 import uuid
 from typing import Tuple
+from modules.cad_io import load_step, StepLoadError
 
 
 class InvalidExtensionError(Exception):
@@ -15,6 +16,11 @@ class InvalidExtensionError(Exception):
 
 class FileSizeError(Exception):
     """Raised when file size exceeds maximum allowed size."""
+    pass
+
+
+class GeometryValidationError(Exception):
+    """Raised when STEP file has invalid or missing geometry."""
     pass
 
 
@@ -124,3 +130,67 @@ def store_upload(file_bytes: bytes, original_filename: str, uploads_dir: str) ->
         f.write(file_bytes)
 
     return part_id, stored_path
+
+
+def validate_step_geometry(step_path: str) -> None:
+    """
+    Validate that STEP file contains valid solid geometry.
+
+    Uses cad_io.load_step() to parse the file and checks for solid geometry.
+    Raises GeometryValidationError if file cannot be parsed or has no solid.
+
+    Args:
+        step_path: Path to STEP file to validate
+
+    Raises:
+        GeometryValidationError: If file has invalid or missing geometry
+
+    Example:
+        >>> validate_step_geometry("path/to/part.step")  # OK if valid
+        >>> validate_step_geometry("invalid.step")  # Raises GeometryValidationError
+    """
+    try:
+        # Attempt to load STEP file
+        workplane = load_step(step_path)
+
+        # Check if workplane has a solid
+        # Get the solid from the workplane
+        solid = workplane.val()
+
+        if solid is None:
+            raise GeometryValidationError(
+                "File requires manual review - please contact us"
+            )
+
+        # Check if it has a volume (indicating it's a valid solid)
+        if not hasattr(solid, 'Volume'):
+            raise GeometryValidationError(
+                "File requires manual review - please contact us"
+            )
+
+        # Try to get the volume (this will fail if geometry is invalid)
+        try:
+            volume = solid.Volume()
+            # Volume should be positive for a valid solid
+            if volume <= 0:
+                raise GeometryValidationError(
+                    "File requires manual review - please contact us"
+                )
+        except Exception:
+            raise GeometryValidationError(
+                "File requires manual review - please contact us"
+            )
+
+    except StepLoadError:
+        # StepLoadError from cad_io means file couldn't be parsed
+        raise GeometryValidationError(
+            "File requires manual review - please contact us"
+        )
+    except GeometryValidationError:
+        # Re-raise our own errors
+        raise
+    except Exception:
+        # Any other error means invalid geometry
+        raise GeometryValidationError(
+            "File requires manual review - please contact us"
+        )

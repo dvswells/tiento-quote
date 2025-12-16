@@ -10,9 +10,12 @@ from modules.file_handler import (
     validate_extension,
     validate_size,
     store_upload,
+    validate_step_geometry,
     InvalidExtensionError,
     FileSizeError,
+    GeometryValidationError,
 )
+import cadquery as cq
 
 
 class TestValidateExtension:
@@ -420,3 +423,158 @@ class TestStoreUpload:
             assert str(uuid_obj) == name
             # Extension should match
             assert ext == ".step"
+
+
+class TestValidateStepGeometry:
+    """Test STEP geometry validation."""
+
+    def test_validate_valid_step_file(self):
+        """Test that valid STEP file with solid geometry passes validation."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a simple box using cadquery
+            box = cq.Workplane("XY").box(10, 10, 10)
+
+            # Export to STEP
+            step_path = os.path.join(tmpdir, "test_box.step")
+            cq.exporters.export(box, step_path)
+
+            # Should not raise exception
+            validate_step_geometry(step_path)
+
+    def test_validate_complex_geometry(self):
+        """Test that complex STEP file with solid geometry passes validation."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a more complex shape with holes
+            part = (
+                cq.Workplane("XY")
+                .box(20, 20, 10)
+                .faces(">Z")
+                .workplane()
+                .hole(5)
+            )
+
+            step_path = os.path.join(tmpdir, "complex.step")
+            cq.exporters.export(part, step_path)
+
+            # Should not raise exception
+            validate_step_geometry(step_path)
+
+    def test_validate_empty_file_raises(self):
+        """Test that empty file raises GeometryValidationError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create an empty file
+            step_path = os.path.join(tmpdir, "empty.step")
+            with open(step_path, "w") as f:
+                pass  # Empty file
+
+            with pytest.raises(GeometryValidationError) as exc_info:
+                validate_step_geometry(step_path)
+
+            # Check for spec-aligned error message
+            error_msg = str(exc_info.value).lower()
+            assert "manual review" in error_msg or "contact" in error_msg
+
+    def test_validate_garbage_file_raises(self):
+        """Test that file with garbage bytes raises GeometryValidationError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a file with garbage content
+            step_path = os.path.join(tmpdir, "garbage.step")
+            with open(step_path, "w") as f:
+                f.write("This is not a valid STEP file\n")
+                f.write("Just random garbage text\n")
+
+            with pytest.raises(GeometryValidationError) as exc_info:
+                validate_step_geometry(step_path)
+
+            # Check for spec-aligned error message
+            error_msg = str(exc_info.value).lower()
+            assert "manual review" in error_msg or "contact" in error_msg
+
+    def test_validate_invalid_step_format_raises(self):
+        """Test that invalid STEP format raises GeometryValidationError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a file that looks like STEP but isn't valid
+            step_path = os.path.join(tmpdir, "invalid.step")
+            with open(step_path, "w") as f:
+                f.write("ISO-10303-21;\n")
+                f.write("HEADER;\n")
+                f.write("ENDSEC;\n")
+                f.write("DATA;\n")
+                f.write("ENDSEC;\n")
+                f.write("END-ISO-10303-21;\n")
+
+            with pytest.raises(GeometryValidationError) as exc_info:
+                validate_step_geometry(step_path)
+
+            error_msg = str(exc_info.value).lower()
+            assert "manual review" in error_msg or "contact" in error_msg
+
+    def test_validate_nonexistent_file_raises(self):
+        """Test that nonexistent file raises GeometryValidationError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            step_path = os.path.join(tmpdir, "nonexistent.step")
+
+            with pytest.raises(GeometryValidationError):
+                validate_step_geometry(step_path)
+
+    def test_error_message_is_spec_aligned(self):
+        """Test that error message matches spec exactly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create an empty file
+            step_path = os.path.join(tmpdir, "empty.step")
+            with open(step_path, "w") as f:
+                pass
+
+            with pytest.raises(GeometryValidationError) as exc_info:
+                validate_step_geometry(step_path)
+
+            # Spec says: "File requires manual review - please contact us"
+            error_msg = str(exc_info.value)
+            assert "File requires manual review" in error_msg or "manual review" in error_msg
+
+    def test_error_is_deterministic(self):
+        """Test that same invalid file produces same error."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            step_path = os.path.join(tmpdir, "test.step")
+            with open(step_path, "w") as f:
+                f.write("invalid content")
+
+            # Call twice and check we get consistent errors
+            error1 = None
+            error2 = None
+
+            try:
+                validate_step_geometry(step_path)
+            except GeometryValidationError as e:
+                error1 = str(e)
+
+            try:
+                validate_step_geometry(step_path)
+            except GeometryValidationError as e:
+                error2 = str(e)
+
+            # Errors should be the same (deterministic)
+            assert error1 == error2
+            assert error1 is not None
+
+
+class TestGeometryValidationError:
+    """Test GeometryValidationError exception."""
+
+    def test_geometry_validation_error_is_exception(self):
+        """Test that GeometryValidationError is an Exception."""
+        assert issubclass(GeometryValidationError, Exception)
+
+    def test_geometry_validation_error_can_be_raised(self):
+        """Test that GeometryValidationError can be raised and caught."""
+        with pytest.raises(GeometryValidationError):
+            raise GeometryValidationError("Test error")
+
+    def test_geometry_validation_error_has_message(self):
+        """Test that GeometryValidationError preserves error message."""
+        message = "File requires manual review - please contact us"
+
+        with pytest.raises(GeometryValidationError) as exc_info:
+            raise GeometryValidationError(message)
+
+        assert str(exc_info.value) == message
