@@ -1,0 +1,21 @@
+{
+  "base_price": 30.0,
+  "minimum_order_price": 30.0,
+  "coefficients": {
+    "volume": 0.0,
+    "through_hole_count": 0.0,
+    "blind_hole_count": 0.0,
+    "blind_hole_avg_depth_to_diameter": 0.0,
+    "blind_hole_max_depth_to_diameter": 0.0,
+    "pocket_count": 0.0,
+    "pocket_total_volume": 0.0,
+    "pocket_avg_depth": 0.0,
+    "pocket_max_depth": 0.0,
+    "non_standard_hole_count": 0.0
+  },
+  "r_squared": 0.0,
+  "scaler_mean": [],
+  "scaler_std": [],
+  "last_updated": "2025-01-01",
+  "notes": "Initial untrained model - all coefficients set to 0. Run training script to populate with real values."
+}
