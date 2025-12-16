@@ -693,24 +693,52 @@ Extend `modules/file_handler.py`:
 
 ### `text` Prompt 13 — Pipeline orchestrator (end-to-end core)
 
-Create `modules/pipeline.py`:
+✅ **COMPLETE**
 
-* `process_quote(step_path, quantity, pricing_config_path) -> ProcessingResult`
-  Sequence:
+**Implementation:**
+- Created `modules/pipeline.py` with end-to-end orchestration
+- Implemented `process_quote(step_path, quantity, pricing_config_path) -> ProcessingResult`
+- Generates unique part_id using UUID v4
+- Coordinates all modules in sequence: settings → detection → validation → pricing
+- Returns complete ProcessingResult with all data
+- Pure Python logic, no Streamlit dependencies
 
-1. load settings
-2. detect bbox+volume
-3. validate bbox limits
-4. calculate quote
-   Return a complete `ProcessingResult`.
+**Pipeline Sequence:**
+1. **Load settings**: `get_settings()` - loads application configuration
+2. **Detect features**: `detect_bbox_and_volume(step_path)` - detects bbox dimensions and volume
+3. **Validate limits**: `validate_bounding_box_limits(features, settings)` - rejects oversized parts
+4. **Load pricing config**: `load_pricing_config(pricing_config_path)` - loads trained model
+5. **Calculate quote**: `calculate_quote(features, quantity, pricing_config)` - generates pricing
+6. **Return result**: Complete ProcessingResult with all data
 
-**TDD:**
+**ProcessingResult Contents:**
+- part_id: Generated UUID v4 string
+- step_file_path: Path to input STEP file
+- stl_file_path: Empty string (STL export not yet implemented)
+- features: Detected PartFeatures (bbox, volume, holes=0, pockets=0)
+- confidence: FeatureConfidence scores (bbox=1.0, volume=1.0, others=0.0)
+- dfm_issues: Empty list (DFM checks not yet implemented)
+- quote: Calculated QuoteResult with pricing breakdown
+- errors: Empty list on successful processing
 
-* End-to-end test with a generated STEP and a deterministic pricing config.
+**Test Coverage (16 tests):**
+- End-to-end processing: returns ProcessingResult, all fields present
+- Feature detection: 10×20×30mm box → 6000mm³ volume detected correctly
+- Confidence validation: bbox and volume confidence = 1.0
+- Quote generation: pricing calculated, minimum order (€30) applied correctly
+- Validation enforcement: oversized parts (>600×400×500mm) rejected
+- Quantity validation: quantity >50 rejected, 1-50 accepted
+- Multiple quantities: quantity 1 (minimum applies) and 10 (calculated price) both work
+- Serialization: result.to_dict() produces valid dictionary
+- Error handling: successful processing has empty errors list
 
-**Acceptance:**
+**Files:**
+- `modules/pipeline.py` (72 lines)
+- `tests/test_pipeline.py` (234 lines, 16 tests)
 
-* No Streamlit here; purely callable logic.
+**Tests:** All 212 tests passing (196 previous + 16 new)
+
+**Commits:** 5f85b05
 
 ---
 
