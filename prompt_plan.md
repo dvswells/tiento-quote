@@ -529,13 +529,13 @@ Extend `modules/file_handler.py`:
 
 ---
 
-### `text` Prompt 09 — Upload validation: STEP parse + solid presence
+### `text` Prompt 09 — Upload validation: STEP parse + solid presence ✅ COMPLETE
 
 Extend `modules/file_handler.py`:
 
 * Add `validate_step_geometry(step_path)` that uses `cad_io.load_step()`
 * Reject if no solid geometry (define a reasonable check)
-* Use spec error message: “File requires manual review - please contact us”
+* Use spec error message: "File requires manual review - please contact us"
 
 **TDD:**
 
@@ -545,6 +545,32 @@ Extend `modules/file_handler.py`:
 **Acceptance:**
 
 * Errors are deterministic and user-friendly.
+
+**Implementation Notes:**
+- Extended modules/file_handler.py with geometry validation
+- GeometryValidationError custom exception for invalid geometry
+- validate_step_geometry(step_path) function:
+  * Uses cad_io.load_step() to parse STEP file
+  * Validates solid geometry presence (workplane.val())
+  * Checks for Volume attribute on solid
+  * Ensures volume > 0 (valid solid)
+  * Catches all error types:
+    - StepLoadError (from cad_io)
+    - Invalid/missing geometry
+    - Any other parsing errors
+  * Always returns spec-aligned error message
+- Error message matches spec exactly: "File requires manual review - please contact us"
+- Deterministic errors (same input = same error)
+- Comprehensive test suite (11 tests):
+  * Valid STEP files pass (simple box, complex geometry with holes)
+  * Empty files raise GeometryValidationError
+  * Garbage content raises GeometryValidationError
+  * Invalid STEP format raises GeometryValidationError
+  * Nonexistent files raise GeometryValidationError
+  * Error messages verified to be spec-aligned
+  * Determinism verified (same error for same file)
+  * Exception behavior validation
+- All tests passing (149/149 total)
 
 ---
 
