@@ -6,7 +6,7 @@ import os
 import tempfile
 import pytest
 import cadquery as cq
-from modules.visualization import step_to_stl, compute_adaptive_deflection
+from modules.visualization import step_to_stl, compute_adaptive_deflection, build_threejs_viewer_html
 from modules.domain import PartFeatures
 
 
@@ -212,3 +212,93 @@ class TestStepToStl:
         step_to_stl(simple_step_file, nested_path, 0.1, 0.5)
 
         assert os.path.exists(nested_path)
+
+
+class TestBuildThreejsViewerHtml:
+    """Test Three.js viewer HTML builder."""
+
+    def test_returns_string(self):
+        """Test that function returns a string."""
+        html = build_threejs_viewer_html("test.stl")
+
+        assert isinstance(html, str)
+        assert len(html) > 0
+
+    def test_html_has_basic_structure(self):
+        """Test that HTML has basic structure tags."""
+        html = build_threejs_viewer_html("test.stl")
+
+        assert "<html" in html.lower()
+        assert "<head" in html.lower()
+        assert "<body" in html.lower()
+        assert "</html>" in html.lower()
+
+    def test_html_contains_threejs_cdn(self):
+        """Test that HTML includes Three.js from CDN."""
+        html = build_threejs_viewer_html("test.stl")
+
+        # Should reference three.js from CDN (common CDNs: unpkg, jsdelivr, cdnjs)
+        assert "three" in html.lower()
+        assert ("cdn" in html.lower() or "unpkg" in html.lower() or
+                "jsdelivr" in html.lower() or "cdnjs" in html.lower())
+
+    def test_html_contains_stl_loader(self):
+        """Test that HTML includes STLLoader."""
+        html = build_threejs_viewer_html("test.stl")
+
+        assert "STLLoader" in html or "stlloader" in html.lower()
+
+    def test_html_contains_orbit_controls(self):
+        """Test that HTML includes OrbitControls."""
+        html = build_threejs_viewer_html("test.stl")
+
+        assert "OrbitControls" in html or "orbitcontrols" in html.lower()
+
+    def test_html_contains_stl_source_placeholder(self):
+        """Test that HTML contains placeholder for STL source."""
+        stl_source = "models/part.stl"
+        html = build_threejs_viewer_html(stl_source)
+
+        # HTML should include the STL source somewhere
+        assert stl_source in html
+
+    def test_html_works_with_url(self):
+        """Test that function accepts URL as STL source."""
+        url = "https://example.com/model.stl"
+        html = build_threejs_viewer_html(url)
+
+        assert url in html
+        assert isinstance(html, str)
+
+    def test_html_works_with_data_url(self):
+        """Test that function accepts data URL (base64) as STL source."""
+        data_url = "data:application/octet-stream;base64,ABC123"
+        html = build_threejs_viewer_html(data_url)
+
+        assert data_url in html
+        assert isinstance(html, str)
+
+    def test_html_is_self_contained(self):
+        """Test that HTML is self-contained (uses CDN, no external files)."""
+        html = build_threejs_viewer_html("test.stl")
+
+        # Should use CDN links for dependencies
+        assert "http://" in html or "https://" in html
+        # Should not reference local script files (except inline)
+        assert '<script src="three.js"' not in html
+        assert '<script src="STLLoader.js"' not in html
+        assert '<script src="OrbitControls.js"' not in html
+
+    def test_html_has_canvas_or_container(self):
+        """Test that HTML has a canvas or container for rendering."""
+        html = build_threejs_viewer_html("test.stl")
+
+        # Three.js needs either a canvas or a container div
+        assert "<canvas" in html.lower() or "container" in html.lower()
+
+    def test_html_has_script_tag(self):
+        """Test that HTML contains script tag for Three.js code."""
+        html = build_threejs_viewer_html("test.stl")
+
+        assert "<script" in html.lower()
+        assert "</script>" in html.lower()

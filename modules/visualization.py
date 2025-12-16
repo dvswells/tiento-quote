@@ -1,7 +1,7 @@
 """
 Visualization utilities for Tiento Quote v0.1.
 
-Handles STEP to STL conversion for 3D visualization.
+Handles STEP to STL conversion and Three.js viewer generation for 3D visualization.
 """
 import os
 from typing import Tuple
@@ -96,3 +96,149 @@ def step_to_stl(
         )
     except Exception as e:
         raise Exception(f"Failed to export STL file: {stl_path}. Error: {str(e)}")
+
+
+def build_threejs_viewer_html(stl_bytes_or_url: str) -> str:
+    """
+    Build self-contained HTML for Three.js 3D viewer.
+
+    Creates a complete HTML page with Three.js viewer that can load and display
+    STL files. Uses CDN-hosted Three.js, STLLoader, and OrbitControls for
+    interactive 3D visualization.
+
+    Args:
+        stl_bytes_or_url: URL to STL file, data URL (base64), or file path
+
+    Returns:
+        Self-contained HTML string ready for rendering
+
+    Example:
+        >>> html = build_threejs_viewer_html("model.stl")
+        >>> # Can be rendered in Streamlit with st.components.v1.html(html)
+    """
+    html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>3D Model Viewer</title>
+    <style>
+        body {{
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }}
+        #container {{
+            width: 100%;
+            height: 600px;
+        }}
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+
+    <!-- Three.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // Set up scene, camera, and renderer
+        const container = document.getElementById('container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf0f0f0);
+
+        const camera = new THREE.PerspectiveCamera(
+            75,
+            container.clientWidth / container.clientHeight,
+            0.1,
+            10000
+        );
+
+        const renderer = new THREE.WebGLRenderer({{ antialias: true }});
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        container.appendChild(renderer.domElement);
+
+        // Add lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        scene.add(ambientLight);
+
+        const directionalLight1 = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight1.position.set(1, 1, 1);
+        scene.add(directionalLight1);
+
+        const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight2.position.set(-1, -1, -1);
+        scene.add(directionalLight2);
+
+        // Add OrbitControls for camera interaction
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 1;
+        controls.maxDistance = 5000;
+
+        // Load STL file
+        const loader = new THREE.STLLoader();
+        loader.load(
+            '{stl_bytes_or_url}',
+            function (geometry) {{
+                const material = new THREE.MeshPhongMaterial({{
+                    color: 0x5555ff,
+                    specular: 0x111111,
+                    shininess: 200
+                }});
+
+                const mesh = new THREE.Mesh(geometry, material);
+
+                // Center the geometry
+                geometry.computeBoundingBox();
+                const boundingBox = geometry.boundingBox;
+                const center = new THREE.Vector3();
+                boundingBox.getCenter(center);
+                mesh.position.sub(center);
+
+                scene.add(mesh);
+
+                // Position camera to view the model
+                const size = new THREE.Vector3();
+                boundingBox.getSize(size);
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const fov = camera.fov * (Math.PI / 180);
+                const cameraDistance = Math.abs(maxDim / Math.sin(fov / 2)) * 1.5;
+
+                camera.position.set(cameraDistance, cameraDistance, cameraDistance);
+                camera.lookAt(0, 0, 0);
+                controls.update();
+            }},
+            function (xhr) {{
+                // Progress callback
+                console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+            }},
+            function (error) {{
+                console.error('Error loading STL:', error);
+            }}
+        );
+
+        // Animation loop
+        function animate() {{
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }}
+
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', function() {{
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }});
+    </script>
+</body>
+</html>
+"""
+    return html
