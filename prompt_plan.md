@@ -744,18 +744,50 @@ Extend `modules/file_handler.py`:
 
 ### `text` Prompt 14 — Streamlit app skeleton wired to pipeline
 
-Create `app.py`:
+✅ **COMPLETE**
 
-* Header per spec
-* STEP upload widget
-* quantity input (1–50, autocorrect invalid to 1)
-* progress messages for pipeline stages
-* display quote summary + disclaimer
-  For now, show features (bbox/volume) and quote; holes/pockets remain 0.
+**Implementation:**
+- Created `app.py` - Streamlit web application for CNC machining quotes
+- Wired to `process_quote()` pipeline for end-to-end processing
+- Single-page application with responsive two-column layout
 
-**Acceptance (manual):**
+**UI Components:**
+- **Header**: "Tiento Quote v0.1 - CNC Machining Calculator" with Wells Global Solutions contact info
+- **File Upload**: STEP/STP files, max 50MB, with helpful tooltip
+- **Quantity Input**: Number input (1-50) with auto-correction to 1 if out of range
+- **Static Configuration**: Material (Aluminum 6061-T6), Finish (As Machined), Tolerance (ISO 2768-m), Lead Time (10 Business Days)
+- **Progress Indicators**: Sequential spinners for Upload → Validate → Detect → Calculate → Complete
 
-* `streamlit run app.py` works locally and you can upload a STEP and see a quote.
+**Results Display:**
+- **Quote Summary**: Quantity, price per unit, total price, minimum order notice
+- **Part Features**: Bounding box dimensions (X/Y/Z in mm), volume (mm³), holes/pockets (currently 0)
+- **Cost Breakdown**: Base cost, feature contribution, predicted per unit, calculated total, minimum order (if applied), final total
+- **Detection Confidence**: Color-coded scores (🟢 bbox=100%, volume=100%; ⚪ others=0%)
+- **DFM Warnings**: Section for critical/warning/info messages (empty in v0)
+- **Part ID**: Display for reference
+
+**Disclaimer:**
+- Important notice: Pre-quotation for reference only, manual review required
+- Prices exclude VAT and shipping
+
+**Error Handling:**
+- `BoundingBoxLimitError`: Oversized parts rejected with contact information
+- `ModelNotReadyError`: Training required message with admin contact info
+- `InvalidQuantityError`: Quantity validation with helpful message
+- Generic exceptions: User-friendly error messages with contact email
+- Temporary file cleanup on all error paths (including exceptions)
+
+**Testing:**
+- Acceptance: Manual testing with `streamlit run app.py`
+- Upload STEP file → See quote with bbox/volume
+- Quantity validation working (1-50, auto-correct)
+- Error handling for oversized parts and invalid files
+- Progress indicators show during processing
+
+**Files:**
+- `app.py` (224 lines)
+
+**Commits:** 23027ce
 
 ---
 
