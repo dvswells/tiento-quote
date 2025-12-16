@@ -409,7 +409,7 @@ Create `modules/db.py`:
 
 ---
 
-### `text` Prompt 06 — CAD I/O utility: load STEP
+### `text` Prompt 06 — CAD I/O utility: load STEP ✅ COMPLETE
 
 Create `modules/cad_io.py`:
 
@@ -424,6 +424,27 @@ Create `modules/cad_io.py`:
 **Acceptance:**
 
 * This becomes the single entrypoint for STEP parsing.
+
+**Implementation Notes:**
+- Created modules/cad_io.py with STEP file loading functionality
+- StepLoadError custom exception with helpful error messages
+- load_step(step_path) function:
+  * Uses cadquery.importers.importStep()
+  * Returns cadquery Workplane (wraps if needed)
+  * Comprehensive error handling:
+    - File not found (helpful message includes path)
+    - Empty file detection
+    - Invalid STEP format (parse errors)
+    - Generic load errors with context
+  * All errors wrapped in StepLoadError with helpful messages
+- Single entrypoint for all STEP parsing in the application
+- Comprehensive test suite (14 tests):
+  * Load valid STEP files (simple boxes)
+  * Verify loaded geometry is correct (Workplane, solid, volume)
+  * Complex geometries (boxes with holes, multiple operations)
+  * Error cases: nonexistent, invalid, non-STEP, empty files
+  * Exception behavior validation
+- All tests passing (97/97 total)
 
 ---
 
