@@ -576,21 +576,33 @@ Extend `modules/file_handler.py`:
 
 ### `text` Prompt 10 — Feature detector v0: bounding box + volume
 
-Create `modules/feature_detector.py`:
+✅ **COMPLETE**
 
-* `detect_bbox_and_volume(step_path) -> (PartFeatures, FeatureConfidence)`
-  Compute:
-* bbox x/y/z in mm
-* volume in mm³
-  Set confidence for these to 1.0.
+**Implementation:**
+- Created `modules/feature_detector.py` with `detect_bbox_and_volume(step_path)`
+- Function returns `(PartFeatures, FeatureConfidence)` tuple
+- Uses `cad_io.load_step()` for STEP parsing
+- Computes bounding box dimensions (x, y, z) in mm using `solid.BoundingBox()`
+- Calculates volume in mm³ using `solid.Volume()`
+- Sets confidence to 1.0 for bbox and volume (deterministic geometric calculations)
+- All other features (holes, pockets) remain at zero as specified
 
-**TDD:**
+**Test Coverage (16 tests):**
+- Known geometry: 10×20×30mm box = 6000mm³, 5×5×5mm cube = 125mm³
+- Bounding box accuracy within 0.1mm tolerance
+- Volume accuracy within 1mm³ tolerance
+- Complex shapes with holes tested
+- Confidence scores validation (bbox=1.0, volume=1.0, others=0.0)
+- Verified holes/pockets remain zero
+- Error handling for nonexistent files
 
-* Generate a known box (e.g., 10×20×30 mm) in tests, export STEP, detect, assert bbox matches (within tolerance) and volume equals 6000 mm³ (within tolerance).
+**Files:**
+- `modules/feature_detector.py` (76 lines)
+- `tests/test_feature_detector.py` (195 lines, 16 tests)
 
-**Acceptance:**
+**Tests:** All 165 tests passing (149 previous + 16 new)
 
-* No holes/pockets yet; those remain zero.
+**Commits:** 53ae048
 
 ---
 
