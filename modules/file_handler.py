@@ -1,10 +1,10 @@
 """
 File handling utilities for Tiento Quote v0.1.
 
-Provides validation helpers for file uploads.
-Pure functions with no filesystem access.
+Provides validation helpers and upload storage for file uploads.
 """
 import os
+import uuid
 from typing import Tuple
 
 
@@ -79,3 +79,48 @@ def validate_size(num_bytes: int, max_bytes: int) -> None:
             raise FileSizeError(
                 f"File size exceeds {max_mb:.1f}MB limit"
             )
+
+
+def store_upload(file_bytes: bytes, original_filename: str, uploads_dir: str) -> Tuple[str, str]:
+    """
+    Store uploaded file with UUID-based naming.
+
+    Preserves the original file extension (.step or .stp).
+    Creates uploads directory if it doesn't exist.
+
+    Args:
+        file_bytes: File content as bytes
+        original_filename: Original filename (used to extract extension)
+        uploads_dir: Directory to store uploaded files
+
+    Returns:
+        Tuple of (part_id, stored_path):
+        - part_id: Generated UUID v4 string
+        - stored_path: Full path to stored file
+
+    Example:
+        >>> file_bytes = b"STEP file content"
+        >>> part_id, path = store_upload(file_bytes, "part.step", "/uploads")
+        >>> # part_id: "a3f5b2c1-1234-5678-9abc-def012345678"
+        >>> # path: "/uploads/a3f5b2c1-1234-5678-9abc-def012345678.step"
+    """
+    # Generate UUID v4 for part ID
+    part_id = str(uuid.uuid4())
+
+    # Extract extension from original filename
+    extension = os.path.splitext(original_filename)[1]
+
+    # Create filename: UUID + extension
+    filename = f"{part_id}{extension}"
+
+    # Ensure uploads directory exists
+    os.makedirs(uploads_dir, exist_ok=True)
+
+    # Full path for stored file
+    stored_path = os.path.join(uploads_dir, filename)
+
+    # Write file bytes
+    with open(stored_path, "wb") as f:
+        f.write(file_bytes)
+
+    return part_id, stored_path

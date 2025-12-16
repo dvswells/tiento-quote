@@ -2,10 +2,14 @@
 Test suite for file validation helpers.
 Following TDD - tests written first.
 """
+import os
+import tempfile
+import uuid
 import pytest
 from modules.file_handler import (
     validate_extension,
     validate_size,
+    store_upload,
     InvalidExtensionError,
     FileSizeError,
 )
@@ -229,3 +233,190 @@ class TestPureFunctions:
         validate_size(1000, 5000)
 
         # No filesystem access means no errors even for fake files
+
+
+class TestStoreUpload:
+    """Test store_upload function."""
+
+    def test_store_upload_creates_file(self):
+        """Test that store_upload creates a file in uploads directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_bytes = b"test file content"
+            original_filename = "test.step"
+
+            part_id, stored_path = store_upload(file_bytes, original_filename, tmpdir)
+
+            # File should exist
+            assert os.path.exists(stored_path)
+
+    def test_store_upload_returns_uuid(self):
+        """Test that store_upload returns a valid UUID."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_bytes = b"test content"
+            original_filename = "test.step"
+
+            part_id, stored_path = store_upload(file_bytes, original_filename, tmpdir)
+
+            # part_id should be a valid UUID
+            assert isinstance(part_id, str)
+            assert len(part_id) > 0
+
+            # Should be able to parse as UUID
+            uuid_obj = uuid.UUID(part_id)
+            assert str(uuid_obj) == part_id
+
+    def test_store_upload_preserves_step_extension(self):
+        """Test that store_upload preserves .step extension."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_bytes = b"test content"
+            original_filename = "my_part.step"
+
+            part_id, stored_path = store_upload(file_bytes, original_filename, tmpdir)
+
+            # Stored file should have .step extension
+            assert stored_path.endswith(".step")
+
+    def test_store_upload_preserves_stp_extension(self):
+        """Test that store_upload preserves .stp extension."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_bytes = b"test content"
+            original_filename = "my_part.stp"
+
+            part_id, stored_path = store_upload(file_bytes, original_filename, tmpdir)
+
+            # Stored file should have .stp extension
+            assert stored_path.endswith(".stp")
+
+    def test_store_upload_writes_correct_bytes(self):
+        """Test that store_upload writes the exact same bytes."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_bytes = b"This is test file content with some data: 12345"
+            original_filename = "test.step"
+
+            part_id, stored_path = store_upload(file_bytes, original_filename, tmpdir)
+
+            # Read back the file
+            with open(stored_path, "rb") as f:
+                stored_bytes = f.read()
+
+            # Should be exactly the same
+            assert stored_bytes == file_bytes
+
+    def test_store_upload_creates_directory_if_missing(self):
+        """Test that store_upload creates uploads directory if it doesn't exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a nested path that doesn't exist
+            uploads_dir = os.path.join(tmpdir, "uploads", "nested")
+            assert not os.path.exists(uploads_dir)
+
+            file_bytes = b"test content"
+            original_filename = "test.step"
+
+            part_id, stored_path = store_upload(file_bytes, original_filename, uploads_dir)
+
+            # Directory should now exist
+            assert os.path.exists(uploads_dir)
+            # File should exist
+            assert os.path.exists(stored_path)
+
+    def test_store_upload_returns_correct_path(self):
+        """Test that returned path is in the correct directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_bytes = b"test content"
+            original_filename = "test.step"
+
+            part_id, stored_path = store_upload(file_bytes, original_filename, tmpdir)
+
+            # Path should be in the uploads directory
+            assert stored_path.startswith(tmpdir)
+            # Filename should be UUID + extension
+            filename = os.path.basename(stored_path)
+            assert filename.endswith(".step")
+            # UUID part should match part_id
+            assert part_id in filename
+
+    def test_store_upload_multiple_files(self):
+        """Test that multiple uploads create different files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_bytes1 = b"first file"
+            file_bytes2 = b"second file"
+
+            part_id1, stored_path1 = store_upload(file_bytes1, "file1.step", tmpdir)
+            part_id2, stored_path2 = store_upload(file_bytes2, "file2.step", tmpdir)
+
+            # Different UUIDs
+            assert part_id1 != part_id2
+            # Different paths
+            assert stored_path1 != stored_path2
+            # Both files exist
+            assert os.path.exists(stored_path1)
+            assert os.path.exists(stored_path2)
+
+            # Correct content
+            with open(stored_path1, "rb") as f:
+                assert f.read() == file_bytes1
+            with open(stored_path2, "rb") as f:
+                assert f.read() == file_bytes2
+
+    def test_store_upload_large_file(self):
+        """Test that store_upload handles larger files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a 1MB file
+            file_bytes = b"X" * (1024 * 1024)
+            original_filename = "large.step"
+
+            part_id, stored_path = store_upload(file_bytes, original_filename, tmpdir)
+
+            # File should exist and have correct size
+            assert os.path.exists(stored_path)
+            assert os.path.getsize(stored_path) == len(file_bytes)
+
+            # Verify content
+            with open(stored_path, "rb") as f:
+                assert f.read() == file_bytes
+
+    def test_store_upload_empty_file(self):
+        """Test that store_upload handles empty files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_bytes = b""
+            original_filename = "empty.step"
+
+            part_id, stored_path = store_upload(file_bytes, original_filename, tmpdir)
+
+            # File should exist
+            assert os.path.exists(stored_path)
+            # File should be empty
+            assert os.path.getsize(stored_path) == 0
+
+    def test_store_upload_binary_content(self):
+        """Test that store_upload handles binary content correctly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Binary content with null bytes and various values
+            file_bytes = bytes(range(256))
+            original_filename = "binary.step"
+
+            part_id, stored_path = store_upload(file_bytes, original_filename, tmpdir)
+
+            # Verify exact binary content
+            with open(stored_path, "rb") as f:
+                stored_bytes = f.read()
+
+            assert stored_bytes == file_bytes
+
+    def test_store_upload_filename_format(self):
+        """Test that stored filename follows UUID.extension format."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_bytes = b"test"
+            original_filename = "my_part.step"
+
+            part_id, stored_path = store_upload(file_bytes, original_filename, tmpdir)
+
+            filename = os.path.basename(stored_path)
+            # Should be <uuid>.step format
+            name, ext = os.path.splitext(filename)
+
+            # Name part should be valid UUID
+            uuid_obj = uuid.UUID(name)
+            assert str(uuid_obj) == name
+            # Extension should match
+            assert ext == ".step"
