@@ -793,18 +793,51 @@ Extend `modules/file_handler.py`:
 
 ### `text` Prompt 15 — STEP→STL conversion (visualization module)
 
-Create `modules/visualization.py`:
+✅ **COMPLETE**
 
-* `step_to_stl(step_path, stl_path, linear_deflection, angular_deflection)`
-* helper to compute adaptive deflection from bbox (per spec)
+**Implementation:**
+- Created `modules/visualization.py` with STEP to STL conversion
+- Implemented `compute_adaptive_deflection(features)`: Calculates mesh resolution from part size
+- Implemented `step_to_stl(step_path, stl_path, linear_deflection, angular_deflection)`: Converts geometry
 
-**TDD:**
+**Adaptive Deflection Calculation:**
+- **Linear deflection**: 0.1% of largest bounding box dimension (max_dimension × 0.001)
+- **Angular deflection**: Fixed at 0.5 degrees per spec
+- Examples:
+  - 30mm part → 0.03mm linear deflection
+  - 600mm part → 0.6mm linear deflection
+- Ensures appropriate mesh detail for part size
 
-* Generate a STEP in tests, convert to STL, assert STL exists and file size > 0.
+**STL Conversion Process:**
+1. Load STEP file using `cadquery.importers.importStep()`
+2. Convert to Workplane if needed
+3. Export to STL with tolerance parameters using `cadquery.exporters.export()`
+4. Binary STL format (80-byte header + triangle data)
+5. Create parent directories automatically if needed
 
-**Acceptance:**
+**Error Handling:**
+- Missing STEP files raise exceptions with helpful messages
+- Export failures captured and reported
+- File path validation
 
-* Conversion does not crash on simple solids.
+**Test Coverage (14 tests):**
+- **Adaptive deflection**: Returns tuple, calculates 0.1%, angular=0.5°, uses max dimension
+- **Small parts**: 10×20×30mm → 0.03mm linear deflection
+- **Large parts**: 600×400×500mm → 0.6mm linear deflection
+- **STL creation**: File exists, has content, size >100 bytes
+- **Complex geometry**: Parts with holes/pockets convert successfully
+- **Mesh detail**: Finer deflection produces same or more detail
+- **Error handling**: Nonexistent files raise exceptions
+- **Binary format**: Valid 80-byte STL header
+- **Directory creation**: Parent dirs created automatically
+
+**Files:**
+- `modules/visualization.py` (99 lines)
+- `tests/test_visualization.py` (216 lines, 14 tests)
+
+**Tests:** All 226 tests passing (212 previous + 14 new)
+
+**Commits:** e7583fc
 
 ---
 
