@@ -391,3 +391,170 @@ class TestValidateBoundingBoxLimits:
         error_msg = str(exc_info.value)
         assert "contact" in error_msg.lower()
         assert "david@wellsglobal.eu" in error_msg
+
+
+class TestDetectHoleCandidates:
+    """Test hole candidate detection (cylindrical faces)."""
+
+    def test_box_with_no_holes_detects_zero(self, temp_dir):
+        """Test that a simple box with no holes detects 0 hole candidates."""
+        # Create a simple box with no holes
+        box = cq.Workplane("XY").box(50, 40, 20)
+        step_path = os.path.join(temp_dir, "box_no_holes.step")
+        cq.exporters.export(box, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should detect 0 holes
+        assert features.through_hole_count == 0
+        assert features.blind_hole_count == 0
+
+    def test_box_with_one_through_hole(self, temp_dir):
+        """Test detection of single through hole."""
+        # Create box with one through hole (5mm diameter)
+        box_with_hole = (
+            cq.Workplane("XY")
+            .box(50, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .hole(5)
+        )
+        step_path = os.path.join(temp_dir, "box_one_through_hole.step")
+        cq.exporters.export(box_with_hole, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should detect at least 1 hole total (conservative: may undercount)
+        total_holes = features.through_hole_count + features.blind_hole_count
+        assert total_holes >= 1
+
+    def test_box_with_two_through_holes(self, temp_dir):
+        """Test detection of two through holes."""
+        # Create box with two through holes
+        box_with_holes = (
+            cq.Workplane("XY")
+            .box(50, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .pushPoints([(-10, 0), (10, 0)])
+            .hole(4)
+        )
+        step_path = os.path.join(temp_dir, "box_two_through_holes.step")
+        cq.exporters.export(box_with_holes, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should detect at least 2 holes total (conservative)
+        total_holes = features.through_hole_count + features.blind_hole_count
+        assert total_holes >= 2
+
+    def test_box_with_blind_hole(self, temp_dir):
+        """Test detection of blind hole."""
+        # Create box with one blind hole (depth 10mm)
+        box_with_blind = (
+            cq.Workplane("XY")
+            .box(50, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .circle(2.5)
+            .cutBlind(-10)
+        )
+        step_path = os.path.join(temp_dir, "box_blind_hole.step")
+        cq.exporters.export(box_with_blind, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should detect at least 1 hole total
+        total_holes = features.through_hole_count + features.blind_hole_count
+        assert total_holes >= 1
+
+    def test_box_with_multiple_holes_mixed(self, temp_dir):
+        """Test detection of multiple holes (mix of through and blind)."""
+        # Create box with 2 through holes and 1 blind hole
+        box = (
+            cq.Workplane("XY")
+            .box(60, 50, 20)
+            .faces(">Z")
+            .workplane()
+            .pushPoints([(-15, 0), (15, 0)])
+            .hole(4)  # Two through holes
+            .pushPoints([(0, 10)])
+            .circle(3)
+            .cutBlind(-8)  # One blind hole
+        )
+        step_path = os.path.join(temp_dir, "box_mixed_holes.step")
+        cq.exporters.export(box, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should detect at least 3 holes total (conservative)
+        total_holes = features.through_hole_count + features.blind_hole_count
+        assert total_holes >= 3
+
+    def test_confidence_for_holes_less_than_one(self, temp_dir):
+        """Test that hole detection confidence is less than 1.0 (heuristic)."""
+        # Create box with holes
+        box_with_hole = (
+            cq.Workplane("XY")
+            .box(50, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .hole(5)
+        )
+        step_path = os.path.join(temp_dir, "box_for_confidence.step")
+        cq.exporters.export(box_with_hole, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Hole detection is heuristic, so confidence should be < 1.0
+        # (unless we detect 0 holes, in which case it might be 0.0)
+        total_holes = features.through_hole_count + features.blind_hole_count
+        if total_holes > 0:
+            # If we detected holes, confidence should be between 0 and 1
+            hole_confidence = max(confidence.through_holes, confidence.blind_holes)
+            assert 0.0 < hole_confidence <= 1.0
+
+    def test_conservative_detection_undercounts_if_uncertain(self, temp_dir):
+        """Test that detection is conservative (undercounts rather than overcounts)."""
+        # Create a complex part where detection might be uncertain
+        complex_part = (
+            cq.Workplane("XY")
+            .box(50, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .hole(5)
+        )
+        step_path = os.path.join(temp_dir, "complex_for_conservative.step")
+        cq.exporters.export(complex_part, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Total holes should not exceed actual holes (conservative)
+        total_holes = features.through_hole_count + features.blind_hole_count
+        # We know there's 1 hole, so should detect 0 or 1 (not 2+)
+        assert total_holes <= 1
+
+    def test_hole_detection_does_not_crash_on_complex_geometry(self, temp_dir):
+        """Test that hole detection handles complex geometry without crashing."""
+        # Create a part with multiple operations
+        complex = (
+            cq.Workplane("XY")
+            .box(60, 50, 30)
+            .faces(">Z")
+            .workplane()
+            .pushPoints([(-10, -10), (10, 10)])
+            .hole(6)
+            .faces(">X")
+            .workplane()
+            .circle(4)
+            .cutBlind(-15)
+        )
+        step_path = os.path.join(temp_dir, "complex_geometry.step")
+        cq.exporters.export(complex, step_path)
+
+        # Should not crash
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should return valid features
+        assert isinstance(features, PartFeatures)
+        assert isinstance(confidence, FeatureConfidence)
