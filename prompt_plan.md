@@ -1403,7 +1403,7 @@ Extend `modules/file_handler.py`:
 
 ---
 
-### `text` Prompt 25 — PDF generator page 1 (summary + tables)
+### `text` Prompt 25 — PDF generator page 1 (summary + tables) [COMPLETE]
 
 Create `modules/pdf_generator.py`:
 
@@ -1419,11 +1419,33 @@ Create `modules/pdf_generator.py`:
 **TDD:**
 
 * Test PDF bytes length > 0
-* Extract text (add a lightweight PDF text dependency if needed) and assert it contains “Tiento Quote v0.1” and the UUID.
+* Extract text (add a lightweight PDF text dependency if needed) and assert it contains "Tiento Quote v0.1" and the UUID.
 
 **Acceptance:**
 
 * Streamlit can download the PDF.
+
+**Implementation:** Created `modules/pdf_generator.py` with complete page 1 layout using reportlab:
+- Professional styling with colors, fonts, and proper spacing
+- Header: "Tiento Quote v0.1"
+- Metadata: Quote date and part UUID
+- Specifications: Material, finish, tolerance, lead time
+- Pricing: Summary table with breakdown
+- DFM warnings: Grouped by severity with yellow background
+- Disclaimer: Auto-generated quote notice
+
+**Tests:** 11 comprehensive PDF tests in `tests/test_pdf_generator.py`:
+- Basic PDF generation and validation
+- Content verification (header, UUID, sections)
+- Pricing and breakdown display
+- DFM warnings display
+- Text extraction using PyPDF2
+
+Added PyPDF2>=3.0.0 to requirements.txt for PDF text extraction in tests.
+
+**Tests:** All 11 PDF generator tests passing, 324 total tests passing
+
+**Commit:** f876745
 
 ---
 
