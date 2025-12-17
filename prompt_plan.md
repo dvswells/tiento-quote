@@ -1209,43 +1209,62 @@ Extend `modules/file_handler.py`:
 
 ### `text` Prompt 22 — Multi-axis pocket detection
 
-**Objective:**
-Extend pocket detection to handle pockets machined from any face orientation (±X, ±Y, ±Z axes), not just top-down pockets from the Z-axis.
+✅ **COMPLETE**
 
-**Current Limitation:**
-The existing implementation (Prompt 20-21) only detects pockets on the top face (Z-axis). Pockets machined from side faces (e.g., a pocket on the ±X or ±Y face) are not detected because `_is_pocket_face()` only checks if faces are inset below the top surface.
+**Implementation:**
+- Extended pocket detection to support all six face orientations (±X, ±Y, ±Z)
+- Previous limitation: only detected top-down (Z-axis) pockets
+- Now detects pockets machined from any primary face orientation
 
-**Implementation Requirements:**
-- Modify `_is_pocket_face(face, solid_bbox)` to detect inset planar faces on all six bounding box faces (±X, ±Y, ±Z)
-- For each major axis direction, check if planar faces are inset from that boundary
-- Update `_estimate_pocket_depth(face, solid_bbox)` to calculate depth relative to the appropriate bounding face (not just top)
-- Determine pocket orientation (which axis it's machined from)
-- Maintain conservative approach: only detect clear pockets with >1mm inset and >0.5mm depth
-- Return same statistics: count, avg_depth, max_depth, total_volume, confidence
+**Multi-Axis Detection Logic:**
+- Updated `_estimate_pocket_depth(face, solid_bbox)`:
+  * Determines pocket orientation by checking face position relative to all boundaries
+  * Calculates depth from appropriate boundary (not just Z-top)
+  * For Z-axis: checks if inset in X and Y, calculates depth from top
+  * For X-axis: checks if inset in Y and Z, calculates depth from +X or -X boundary
+  * For Y-axis: checks if inset in X and Z, calculates depth from +Y or -Y boundary
+  * Returns minimum valid depth (most conservative)
+  * Falls back to Z-axis calculation if orientation unclear
 
-**Detection Strategy:**
-1. For each planar face, determine which bounding box face(s) it's parallel to
-2. Check if face is inset from that boundary (not at the edge)
-3. Calculate depth as distance from face to nearest boundary in perpendicular direction
-4. Apply same filtering criteria (minimum depth, reasonable dimensions)
+- Updated `_is_pocket_face(face, solid_bbox)`:
+  * Checks all six boundaries for inset planar faces
+  * Z-axis pockets: inset in X or Y, below top surface (min 1mm)
+  * X-axis pockets: inset in Y or Z, inset from ±X boundary (min 1mm)
+  * Y-axis pockets: inset in X or Z, inset from ±Y boundary (min 1mm)
+  * Maintains 0.5mm tolerance, 1.0mm minimum inset
 
-**TDD Test Requirements:**
-Create `TestMultiAxisPocketDetection` with at least 8 tests:
-- Box with pocket on +X face (side pocket) → detected
-- Box with pocket on -Y face (side pocket) → detected
-- Box with pocket on top face (Z-axis) → still detected (regression test)
-- Box with pockets on multiple axes → all detected
-- Depth calculation correct for side pockets
+**Returns:**
+- Same statistics as before: count, avg_depth, max_depth, total_volume, confidence
+- Depth now calculated relative to correct boundary for each pocket orientation
+- Confidence remains 0.8 with volume (from Prompt 21)
+
+**Backward Compatibility:**
+- All existing Z-axis pocket tests still pass
+- Existing functionality preserved, extended to new orientations
+- Conservative approach maintained
+
+**Updated detect_bbox_and_volume():**
+- Updated docstring to v5 (multi-axis pocket detection)
+- No changes to function signature or return values
+- Comment updated: "Pocket detection (multi-axis: ±X, ±Y, ±Z faces)"
+
+**Test Coverage (8 new tests in TestMultiAxisPocketDetection):**
+- Pocket on +X face (side) detected
+- Pocket on -Y face (side) detected
+- Top face (Z-axis) still detected (regression test)
+- Pockets on multiple axes all detected
+- Depth calculation correct for side pockets (12mm pocket detected as 8-16mm range)
 - Total volume includes pockets from all orientations
-- Complex part with holes and multi-axis pockets → no crashes
-- Confidence remains appropriate (0.8 with volume)
+- Complex part with holes + multi-axis pockets doesn't crash
+- Confidence scores appropriate (0.8 with volume)
 
-**Acceptance Criteria:**
-- Pockets machined from any of the six primary face orientations are detected
-- Depth and volume calculations are correct for all orientations
-- Backward compatible: existing top-down pocket tests still pass
-- Conservative: undercounts rather than overcounts when ambiguous
-- All tests pass (expected: +8 new tests, ~286 total)
+**Files:**
+- `modules/feature_detector.py` (650 lines, +84 new in _estimate_pocket_depth, _is_pocket_face)
+- `tests/test_feature_detector.py` (1482 lines, +204 new)
+
+**Tests:** All 78 tests passing (70 previous + 8 new)
+
+**Commits:** f94060c
 
 ---
 
