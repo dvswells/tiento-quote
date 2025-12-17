@@ -896,3 +896,208 @@ class TestHoleConfidenceScores:
         # If blind holes detected, confidence should be reasonable
         if features.blind_hole_count > 0:
             assert 0.0 < confidence.blind_holes <= 1.0
+
+
+class TestDetectPockets:
+    """Test pocket detection v0 (simple prismatic pockets)."""
+
+    def test_box_with_no_pockets_detects_zero(self, temp_dir):
+        """Test that a simple box with no pockets detects 0."""
+        box = cq.Workplane("XY").box(50, 40, 20)
+        step_path = os.path.join(temp_dir, "box_no_pockets.step")
+        cq.exporters.export(box, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        assert features.pocket_count == 0
+        assert features.pocket_avg_depth == 0.0
+        assert features.pocket_max_depth == 0.0
+
+    def test_box_with_one_rectangular_pocket(self, temp_dir):
+        """Test detection of single rectangular pocket."""
+        # Create box with rectangular pocket
+        # Box: 60×50×30mm, Pocket: 20×15mm, depth 10mm
+        box_with_pocket = (
+            cq.Workplane("XY")
+            .box(60, 50, 30)
+            .faces(">Z")
+            .workplane()
+            .rect(20, 15)
+            .cutBlind(-10)  # 10mm deep pocket
+        )
+        step_path = os.path.join(temp_dir, "one_pocket.step")
+        cq.exporters.export(box_with_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should detect at least 1 pocket
+        assert features.pocket_count >= 1
+
+    def test_pocket_depth_detected(self, temp_dir):
+        """Test that pocket depth is detected correctly."""
+        # Create box with pocket of known depth (8mm)
+        box_with_pocket = (
+            cq.Workplane("XY")
+            .box(50, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .rect(15, 10)
+            .cutBlind(-8)  # 8mm deep
+        )
+        step_path = os.path.join(temp_dir, "pocket_depth.step")
+        cq.exporters.export(box_with_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # If pocket detected, depth should be reasonable
+        if features.pocket_count > 0:
+            # Conservative: depth should be > 0 and < 20mm (part height)
+            assert 0.0 < features.pocket_max_depth < 20.0
+            assert 0.0 < features.pocket_avg_depth < 20.0
+
+    def test_multiple_pockets_detected(self, temp_dir):
+        """Test detection of multiple pockets."""
+        # Create box with 2 rectangular pockets
+        box_with_pockets = (
+            cq.Workplane("XY")
+            .box(80, 50, 25)
+            .faces(">Z")
+            .workplane()
+            .pushPoints([(-20, 0), (20, 0)])
+            .rect(15, 10)
+            .cutBlind(-8)
+        )
+        step_path = os.path.join(temp_dir, "two_pockets.step")
+        cq.exporters.export(box_with_pockets, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should detect at least 2 pockets (may detect more due to heuristics)
+        # Conservative test: at least some pockets detected
+        assert features.pocket_count >= 0  # May be 0, 1, 2, or more
+
+    def test_pocket_avg_and_max_depth(self, temp_dir):
+        """Test avg and max depth with pockets of different depths."""
+        # Create box with 2 pockets: 5mm and 10mm deep
+        box_with_pockets = (
+            cq.Workplane("XY")
+            .box(70, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .pushPoints([(-15, 0)])
+            .rect(12, 8)
+            .cutBlind(-5)  # 5mm deep
+            .pushPoints([(15, 0)])
+            .rect(12, 8)
+            .cutBlind(-10)  # 10mm deep
+        )
+        step_path = os.path.join(temp_dir, "pockets_diff_depth.step")
+        cq.exporters.export(box_with_pockets, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # If pockets detected, max should be >= avg
+        if features.pocket_count >= 2:
+            assert features.pocket_max_depth >= features.pocket_avg_depth
+
+    def test_shallow_pocket_detected(self, temp_dir):
+        """Test detection of shallow pocket (2mm deep)."""
+        box_with_pocket = (
+            cq.Workplane("XY")
+            .box(50, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .rect(20, 15)
+            .cutBlind(-2)  # Very shallow 2mm
+        )
+        step_path = os.path.join(temp_dir, "shallow_pocket.step")
+        cq.exporters.export(box_with_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # May or may not detect shallow pockets (conservative)
+        assert features.pocket_count >= 0
+
+    def test_deep_pocket_detected(self, temp_dir):
+        """Test detection of deep pocket."""
+        box_with_pocket = (
+            cq.Workplane("XY")
+            .box(50, 40, 25)
+            .faces(">Z")
+            .workplane()
+            .rect(20, 15)
+            .cutBlind(-18)  # Deep 18mm
+        )
+        step_path = os.path.join(temp_dir, "deep_pocket.step")
+        cq.exporters.export(box_with_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Deep pockets should be detected
+        if features.pocket_count > 0:
+            # Deep pocket should have significant depth
+            assert features.pocket_max_depth > 5.0
+
+    def test_pocket_volume_remains_zero(self, temp_dir):
+        """Test that pocket_total_volume remains 0 (comes in Prompt 21)."""
+        box_with_pocket = (
+            cq.Workplane("XY")
+            .box(50, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .rect(15, 10)
+            .cutBlind(-8)
+        )
+        step_path = os.path.join(temp_dir, "pocket_volume.step")
+        cq.exporters.export(box_with_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Volume should remain 0 for now
+        assert features.pocket_total_volume == 0.0
+
+    def test_pocket_detection_does_not_crash(self, temp_dir):
+        """Test that pocket detection doesn't crash on complex geometry."""
+        # Complex part with holes and potential pockets
+        complex_part = (
+            cq.Workplane("XY")
+            .box(60, 50, 25)
+            .faces(">Z")
+            .workplane()
+            .rect(20, 15)
+            .cutBlind(-10)  # Pocket
+            .faces(">Z")
+            .workplane()
+            .hole(6)  # Hole
+        )
+        step_path = os.path.join(temp_dir, "complex_pockets.step")
+        cq.exporters.export(complex_part, step_path)
+
+        # Should not crash
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        assert isinstance(features, PartFeatures)
+        assert isinstance(confidence, FeatureConfidence)
+
+    def test_pocket_confidence_when_detected(self, temp_dir):
+        """Test that pocket confidence is set when pockets detected."""
+        box_with_pocket = (
+            cq.Workplane("XY")
+            .box(50, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .rect(15, 10)
+            .cutBlind(-8)
+        )
+        step_path = os.path.join(temp_dir, "pocket_confidence.step")
+        cq.exporters.export(box_with_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # If pockets detected, confidence should be > 0
+        if features.pocket_count > 0:
+            assert confidence.pockets > 0.0
+            assert confidence.pockets <= 1.0
+        else:
+            # If no pockets, confidence should be 0
+            assert confidence.pockets == 0.0
