@@ -312,6 +312,39 @@ def _estimate_pocket_depth(face, solid_bbox) -> float:
         return 0.0
 
 
+def _estimate_pocket_area(face) -> float:
+    """
+    Estimate area of a pocket face.
+
+    Conservative approximation using face bounding box.
+
+    Args:
+        face: Planar face (pocket bottom)
+
+    Returns:
+        Estimated area in mm², or 0.0 if cannot estimate
+    """
+    try:
+        bbox = face.BoundingBox()
+
+        # Get face dimensions (bounding box spans)
+        x_span = bbox.xmax - bbox.xmin
+        y_span = bbox.ymax - bbox.ymin
+        z_span = bbox.zmax - bbox.zmin
+
+        # For a planar face, one span should be very small (near zero)
+        # The other two spans define the area
+        spans = sorted([x_span, y_span, z_span])
+
+        # Area is product of two largest spans
+        area = spans[1] * spans[2]
+
+        return area
+
+    except Exception:
+        return 0.0
+
+
 def _is_pocket_face(face, solid_bbox) -> bool:
     """
     Check if a planar face is a pocket (not an external face).
@@ -364,22 +397,23 @@ def _is_pocket_face(face, solid_bbox) -> bool:
         return False
 
 
-def _detect_pockets(solid) -> Tuple[int, float, float, float]:
+def _detect_pockets(solid) -> Tuple[int, float, float, float, float]:
     """
-    Detect simple prismatic pockets (MVP constraint).
+    Detect simple prismatic pockets (MVP constraint) with volume approximation.
 
     Detects pockets aligned to primary axes by finding planar faces
-    that are inset from the part surface.
+    that are inset from the part surface. Approximates total volume.
 
     Args:
         solid: OCC solid object from cadquery
 
     Returns:
-        Tuple of (pocket_count, avg_depth, max_depth, confidence):
+        Tuple of (pocket_count, avg_depth, max_depth, total_volume, confidence):
         - pocket_count: Number of pockets detected
         - avg_depth: Average pocket depth in mm
         - max_depth: Maximum pocket depth in mm
-        - confidence: Detection confidence (0.7 for heuristic)
+        - total_volume: Total volume of all pockets in mm³
+        - confidence: Detection confidence (0.8 if volume computed, 0.7 otherwise)
     """
     try:
         # Get solid bounding box
@@ -391,6 +425,7 @@ def _detect_pockets(solid) -> Tuple[int, float, float, float]:
         # Filter to pocket candidates
         pocket_faces = []
         pocket_depths = []
+        pocket_volumes = []
 
         for face in planar_faces:
             if _is_pocket_face(face, solid_bbox):
@@ -399,6 +434,11 @@ def _detect_pockets(solid) -> Tuple[int, float, float, float]:
                     pocket_faces.append(face)
                     pocket_depths.append(depth)
 
+                    # Estimate pocket volume
+                    area = _estimate_pocket_area(face)
+                    volume = area * depth
+                    pocket_volumes.append(volume)
+
         # Count pockets (conservative)
         pocket_count = len(pocket_faces)
 
@@ -406,21 +446,29 @@ def _detect_pockets(solid) -> Tuple[int, float, float, float]:
         avg_depth = sum(pocket_depths) / len(pocket_depths) if pocket_depths else 0.0
         max_depth = max(pocket_depths) if pocket_depths else 0.0
 
-        # Set confidence (heuristic detection)
-        confidence = 0.7 if pocket_count > 0 else 0.0
+        # Compute total volume
+        total_volume = sum(pocket_volumes) if pocket_volumes else 0.0
 
-        return pocket_count, avg_depth, max_depth, confidence
+        # Set confidence (improved when volume computed)
+        if pocket_count > 0 and total_volume > 0:
+            confidence = 0.8  # Improved confidence with volume
+        elif pocket_count > 0:
+            confidence = 0.7  # Basic confidence without volume
+        else:
+            confidence = 0.0
+
+        return pocket_count, avg_depth, max_depth, total_volume, confidence
 
     except Exception:
         # If detection fails, return zeros (conservative)
-        return 0, 0.0, 0.0, 0.0
+        return 0, 0.0, 0.0, 0.0, 0.0
 
 
 def detect_bbox_and_volume(step_path: str) -> Tuple[PartFeatures, FeatureConfidence]:
     """
     Detect bounding box, volume, classified holes, and pockets from STEP file.
 
-    Feature detector v3 computes:
+    Feature detector v4 computes:
     - Bounding box dimensions (x, y, z) in mm
     - Volume in mm³
     - Hole detection with through/blind classification
@@ -428,16 +476,15 @@ def detect_bbox_and_volume(step_path: str) -> Tuple[PartFeatures, FeatureConfide
     - Non-standard hole sizes (not matching M3, M4, M5, M6, M8, M10, M12 ±0.1mm)
     - Pocket detection (simple prismatic pockets, MVP constraint)
     - Pocket depths (avg and max)
-
-    Note: pocket_total_volume remains 0 (comes in next version).
+    - Pocket volume approximation (area × depth)
 
     Args:
         step_path: Path to STEP file to analyze
 
     Returns:
         Tuple of (PartFeatures, FeatureConfidence):
-        - PartFeatures: Detected features (bbox, volume, holes, pockets)
-        - FeatureConfidence: Confidence scores (1.0 for bbox/volume, 0.85 for holes, 0.7 for pockets)
+        - PartFeatures: Detected features (bbox, volume, holes, pockets with volume)
+        - FeatureConfidence: Confidence scores (1.0 for bbox/volume, 0.85 for holes, 0.8 for pockets with volume)
 
     Raises:
         StepLoadError: If STEP file cannot be loaded (propagated from cad_io.load_step)
@@ -447,7 +494,7 @@ def detect_bbox_and_volume(step_path: str) -> Tuple[PartFeatures, FeatureConfide
         >>> print(f"Bounding box: {features.bounding_box_x} × {features.bounding_box_y} × {features.bounding_box_z} mm")
         >>> print(f"Volume: {features.volume} mm³")
         >>> print(f"Through holes: {features.through_hole_count}, Blind: {features.blind_hole_count}")
-        >>> print(f"Pockets: {features.pocket_count}, Max depth: {features.pocket_max_depth}mm")
+        >>> print(f"Pockets: {features.pocket_count}, Volume: {features.pocket_total_volume}mm³")
         >>> print(f"Confidence: bbox={confidence.bounding_box}, holes={confidence.through_holes}, pockets={confidence.pockets}")
     """
     # Load STEP file using cad_io module
@@ -472,8 +519,8 @@ def detect_bbox_and_volume(step_path: str) -> Tuple[PartFeatures, FeatureConfide
     (through_hole_count, blind_hole_count, blind_avg_ratio, blind_max_ratio,
      hole_confidence, non_standard_count) = _detect_holes(solid)
 
-    # Detect pockets
-    (pocket_count, pocket_avg_depth, pocket_max_depth,
+    # Detect pockets with volume approximation
+    (pocket_count, pocket_avg_depth, pocket_max_depth, pocket_total_volume,
      pocket_confidence) = _detect_pockets(solid)
 
     # Create PartFeatures with detected values
@@ -490,13 +537,13 @@ def detect_bbox_and_volume(step_path: str) -> Tuple[PartFeatures, FeatureConfide
         pocket_count=pocket_count,
         pocket_avg_depth=pocket_avg_depth,
         pocket_max_depth=pocket_max_depth,
-        # pocket_total_volume remains 0 (comes in Prompt 21)
+        pocket_total_volume=pocket_total_volume,
     )
 
     # Create FeatureConfidence
     # Set confidence to 1.0 for bbox and volume (deterministic geometric calculations)
-    # Set hole confidence based on detection (heuristic, 0.85-0.90)
-    # Set pocket confidence based on detection (heuristic, 0.7)
+    # Set hole confidence based on detection (heuristic, 0.85)
+    # Set pocket confidence based on detection (0.8 with volume, 0.7 without)
     confidence = FeatureConfidence(
         bounding_box=1.0,
         volume=1.0,

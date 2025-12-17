@@ -1038,8 +1038,8 @@ class TestDetectPockets:
             # Deep pocket should have significant depth
             assert features.pocket_max_depth > 5.0
 
-    def test_pocket_volume_remains_zero(self, temp_dir):
-        """Test that pocket_total_volume remains 0 (comes in Prompt 21)."""
+    def test_pocket_volume_computed(self, temp_dir):
+        """Test that pocket_total_volume is computed (implemented in Prompt 21)."""
         box_with_pocket = (
             cq.Workplane("XY")
             .box(50, 40, 20)
@@ -1053,8 +1053,9 @@ class TestDetectPockets:
 
         features, confidence = detect_bbox_and_volume(step_path)
 
-        # Volume should remain 0 for now
-        assert features.pocket_total_volume == 0.0
+        # Volume should be computed (Prompt 21)
+        if features.pocket_count > 0:
+            assert features.pocket_total_volume > 0
 
     def test_pocket_detection_does_not_crash(self, temp_dir):
         """Test that pocket detection doesn't crash on complex geometry."""
@@ -1101,3 +1102,177 @@ class TestDetectPockets:
         else:
             # If no pockets, confidence should be 0
             assert confidence.pockets == 0.0
+
+
+class TestPocketVolumeApproximation:
+    """Test pocket volume approximation (Prompt 21)."""
+
+    def test_rectangular_pocket_volume_approximation(self, temp_dir):
+        """Test that rectangular pocket volume is approximated correctly."""
+        # Create box with rectangular pocket
+        # Box: 60×50×30mm, Pocket: 20×15mm, depth 10mm
+        # Expected pocket volume: 20 * 15 * 10 = 3000 mm³
+        box_with_pocket = (
+            cq.Workplane("XY")
+            .box(60, 50, 30)
+            .faces(">Z")
+            .workplane()
+            .rect(20, 15)
+            .cutBlind(-10)
+        )
+        step_path = os.path.join(temp_dir, "pocket_volume.step")
+        cq.exporters.export(box_with_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # If pocket detected, volume should be approximated
+        if features.pocket_count > 0:
+            # Should be non-zero
+            assert features.pocket_total_volume > 0
+            # Conservative tolerance: heuristic may detect multiple planar faces
+            # within the pocket (walls + bottom), so allow generous range
+            # Expected: 20*15*10 = 3000 mm³, but may be higher due to wall faces
+            expected_volume = 3000.0
+            assert features.pocket_total_volume > expected_volume * 0.5
+            assert features.pocket_total_volume < expected_volume * 3.0  # Allow 3x tolerance
+
+    def test_multiple_pockets_total_volume(self, temp_dir):
+        """Test that multiple pockets contribute to total volume."""
+        # Create box with 2 pockets: 12×8×5mm and 12×8×10mm
+        # Expected total: (12*8*5) + (12*8*10) = 480 + 960 = 1440 mm³
+        box_with_pockets = (
+            cq.Workplane("XY")
+            .box(70, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .pushPoints([(-15, 0)])
+            .rect(12, 8)
+            .cutBlind(-5)
+            .pushPoints([(15, 0)])
+            .rect(12, 8)
+            .cutBlind(-10)
+        )
+        step_path = os.path.join(temp_dir, "multi_pocket_volume.step")
+        cq.exporters.export(box_with_pockets, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # If pockets detected, total volume should be sum
+        if features.pocket_count >= 2:
+            # Should be greater than single pocket volume
+            assert features.pocket_total_volume > 500
+
+    def test_no_pockets_zero_volume(self, temp_dir):
+        """Test that no pockets results in zero volume."""
+        box = cq.Workplane("XY").box(50, 40, 20)
+        step_path = os.path.join(temp_dir, "no_pocket_volume.step")
+        cq.exporters.export(box, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        assert features.pocket_total_volume == 0.0
+
+    def test_shallow_pocket_has_small_volume(self, temp_dir):
+        """Test that shallow pocket has proportionally smaller volume."""
+        # Shallow pocket: 20×15×2mm = 600 mm³
+        box_with_pocket = (
+            cq.Workplane("XY")
+            .box(50, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .rect(20, 15)
+            .cutBlind(-2)
+        )
+        step_path = os.path.join(temp_dir, "shallow_volume.step")
+        cq.exporters.export(box_with_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # If detected, volume should be small
+        if features.pocket_count > 0:
+            # Should be less than 2000 mm³
+            assert features.pocket_total_volume < 2000
+
+    def test_deep_pocket_has_large_volume(self, temp_dir):
+        """Test that deep pocket has proportionally larger volume."""
+        # Deep pocket: 20×15×15mm = 4500 mm³
+        box_with_pocket = (
+            cq.Workplane("XY")
+            .box(50, 40, 25)
+            .faces(">Z")
+            .workplane()
+            .rect(20, 15)
+            .cutBlind(-15)
+        )
+        step_path = os.path.join(temp_dir, "deep_volume.step")
+        cq.exporters.export(box_with_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # If detected, volume should be large
+        if features.pocket_count > 0:
+            # Should be > 2000 mm³
+            assert features.pocket_total_volume > 2000
+
+    def test_pocket_volume_consistent_across_runs(self, temp_dir):
+        """Test that pocket volume calculation is deterministic."""
+        box_with_pocket = (
+            cq.Workplane("XY")
+            .box(50, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .rect(15, 10)
+            .cutBlind(-8)
+        )
+        step_path = os.path.join(temp_dir, "consistent_volume.step")
+        cq.exporters.export(box_with_pocket, step_path)
+
+        # Run detection twice
+        features1, _ = detect_bbox_and_volume(step_path)
+        features2, _ = detect_bbox_and_volume(step_path)
+
+        # Should be identical
+        assert features1.pocket_total_volume == features2.pocket_total_volume
+
+    def test_pocket_confidence_improves_with_volume(self, temp_dir):
+        """Test that confidence improves when volume can be computed."""
+        box_with_pocket = (
+            cq.Workplane("XY")
+            .box(50, 40, 20)
+            .faces(">Z")
+            .workplane()
+            .rect(15, 10)
+            .cutBlind(-8)
+        )
+        step_path = os.path.join(temp_dir, "volume_confidence.step")
+        cq.exporters.export(box_with_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # If pockets detected and volume computed
+        if features.pocket_count > 0 and features.pocket_total_volume > 0:
+            # Confidence should be improved (>0.7 from Prompt 20)
+            assert confidence.pockets > 0.7
+            assert confidence.pockets <= 1.0
+
+    def test_volume_approximation_conservative(self, temp_dir):
+        """Test that volume approximation is conservative (reasonable bounds)."""
+        # Pocket: 20×15×10mm, expected 3000 mm³
+        box_with_pocket = (
+            cq.Workplane("XY")
+            .box(60, 50, 30)
+            .faces(">Z")
+            .workplane()
+            .rect(20, 15)
+            .cutBlind(-10)
+        )
+        step_path = os.path.join(temp_dir, "conservative_volume.step")
+        cq.exporters.export(box_with_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Volume should be positive and reasonable
+        if features.pocket_count > 0:
+            # Should not be absurdly large (less than entire box volume)
+            box_volume = 60 * 50 * 30  # 90000 mm³
+            assert 0 < features.pocket_total_volume < box_volume
