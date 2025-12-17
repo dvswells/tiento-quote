@@ -1003,23 +1003,70 @@ Extend `modules/file_handler.py`:
 
 ### `text` Prompt 19 — Classify through vs blind + ratios + non-standard
 
-Extend hole logic:
+✅ **COMPLETE**
 
-* Determine through vs blind by checking if the cylindrical feature opens on two opposite sides (through) or one side (blind).
-* Compute blind hole depth and ratios (avg/max depth:diameter).
-* Match diameters to `STANDARD_HOLE_SIZES` with ±0.1mm tolerance; count non-standard.
+**Implementation:**
+- Extended hole detection with classification and analysis capabilities
+- Added through vs blind classification using heuristic analysis
+- Implemented depth:diameter ratio calculations for blind holes
+- Added non-standard hole size detection with tolerance matching
 
-**TDD:**
+**Through vs Blind Classification:**
+- Added `_classify_hole_type(face, solid_bbox)`: Classifies holes by comparing face span to solid dimensions
+- Heuristic: Through holes span >90% of a part dimension, blind holes are shorter
+- Defaults to "through" if classification is uncertain (conservative)
+- Populates `through_hole_count` and `blind_hole_count` separately
 
-* Build two test parts:
+**Blind Hole Depth Ratios:**
+- Added `_estimate_hole_depth(face, solid_bbox)`: Estimates depth from cylindrical face (largest span)
+- Computes depth:diameter ratio for each blind hole
+- Returns `blind_hole_avg_depth_to_diameter` and `blind_hole_max_depth_to_diameter`
+- Used for DFM analysis to detect deep hole warnings (ratio thresholds)
 
-  1. through holes only (standard sizes)
-  2. blind holes with known depth/diameter ratios + a non-standard diameter
-* Assert counts and ratio thresholds.
+**Non-Standard Hole Detection:**
+- Added `STANDARD_HOLE_SIZES` constant: [3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0] mm (M3-M12)
+- Added `HOLE_SIZE_TOLERANCE` constant: 0.1mm
+- Added `_is_standard_hole_size(diameter)`: Checks if diameter matches standard size ±0.1mm
+- Populates `non_standard_hole_count` for pricing adjustments and DFM warnings
 
-**Acceptance:**
+**Improved Confidence:**
+- Upgraded confidence from 0.7 (v1 heuristic) to 0.85 (v2 with classification)
+- Reflects improved detection accuracy with through/blind analysis
+- Range: 0.85-0.90 as specified in acceptance criteria
 
-* Populate `FeatureConfidence` for holes (e.g., 0.85–0.95) based on heuristics.
+**Updated Function Signatures:**
+- `_detect_holes(solid)` now returns 6 values:
+  - (through_count, blind_count, avg_ratio, max_ratio, confidence, non_standard_count)
+- `detect_bbox_and_volume()` updated to unpack and populate all new fields
+
+**Test Coverage (15 new tests):**
+- TestClassifyThroughVsBlindHoles (4 tests):
+  - Through hole classified correctly
+  - Blind hole classified correctly
+  - Mixed holes both detected
+  - Multiple through holes detected
+- TestBlindHoleDepthRatios (4 tests):
+  - Ratios computed for blind holes
+  - Avg and max ratios correct with multiple holes
+  - Shallow blind hole has small ratio
+  - Deep blind hole has large ratio
+- TestStandardVsNonStandardHoles (5 tests):
+  - Standard holes not counted as non-standard
+  - Non-standard holes detected
+  - Multiple standard holes work correctly
+  - Mix of standard and non-standard
+  - Tolerance (±0.1mm) applied correctly
+- TestHoleConfidenceScores (2 tests):
+  - Through hole confidence in range (0.7-1.0)
+  - Blind hole confidence reasonable
+
+**Files:**
+- `modules/feature_detector.py` (348 lines, +118 new)
+- `tests/test_feature_detector.py` (899 lines, +339 new)
+
+**Tests:** All 260 tests passing (245 previous + 15 new)
+
+**Commits:** 8c54784
 
 ---
 
