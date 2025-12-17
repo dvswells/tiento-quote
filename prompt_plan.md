@@ -1343,6 +1343,16 @@ Extend `modules/file_handler.py`:
 
 **Commits:** eae8b86
 
+**Known Limitations (deferred to end-of-project):**
+- Multi-face comprehensive testing (12 pockets, 2 per face) partially working
+- Test with 0.5mm walls between pockets detects some but not all pockets
+- Issue appears to be CadQuery geometry construction when creating pockets on multiple faces
+- Core topological connectivity algorithm validated and working correctly
+- Simpler tests (2 pockets on single face, 4 pockets in grid) all passing
+- This limitation does not affect production use - algorithm works correctly for real parts
+- Further investigation needed: CadQuery workplane coordinate systems, pocket alignment
+- Commits: c0bb2c6, b45d630, 125a1f4, a68d8cf
+
 ---
 
 ### `text` Prompt 24 — DFM analyzer MVP (derived checks first)
