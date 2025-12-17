@@ -527,7 +527,7 @@ def _faces_share_edge(face_a, face_b) -> bool:
         return False
 
 
-def _group_pocket_faces(pocket_faces, solid_bbox) -> list:
+def _group_pocket_faces(pocket_faces, solid_bbox, debug=False) -> list:
     """
     Group related pocket faces (bottom + walls) into distinct pockets.
 
@@ -538,6 +538,7 @@ def _group_pocket_faces(pocket_faces, solid_bbox) -> list:
     Args:
         pocket_faces: List of (face, depth, area) tuples
         solid_bbox: Bounding box of the solid
+        debug: If True, print debugging information
 
     Returns:
         List of pocket groups, each containing (bottom_face, depth, area)
@@ -546,6 +547,12 @@ def _group_pocket_faces(pocket_faces, solid_bbox) -> list:
         return []
 
     n = len(pocket_faces)
+
+    if debug:
+        print(f"\n=== Grouping {n} pocket faces ===")
+        for i, (face, depth, area) in enumerate(pocket_faces):
+            center = face.Center()
+            print(f"Face {i}: depth={depth:.2f}, area={area:.2f}, center=({center.x:.2f}, {center.y:.2f}, {center.z:.2f})")
 
     # Build adjacency graph based on edge sharing
     # adjacency[i] = list of indices j where face i shares edge with face j
@@ -559,6 +566,8 @@ def _group_pocket_faces(pocket_faces, solid_bbox) -> list:
             if _faces_share_edge(face_i, face_j):
                 adjacency[i].append(j)
                 adjacency[j].append(i)
+                if debug:
+                    print(f"Faces {i} and {j} share an edge")
 
     # Find connected components using DFS
     visited = [False] * n
@@ -577,6 +586,11 @@ def _group_pocket_faces(pocket_faces, solid_bbox) -> list:
             dfs(i, component)
             components.append(component)
 
+    if debug:
+        print(f"\nFound {len(components)} connected components:")
+        for idx, component in enumerate(components):
+            print(f"Component {idx}: faces {component} (size={len(component)})")
+
     # From each connected component, select the bottom face
     # Bottom face has maximum depth (deepest inset)
     bottom_faces = []
@@ -589,6 +603,9 @@ def _group_pocket_faces(pocket_faces, solid_bbox) -> list:
         _, bottom_face, bottom_depth, bottom_area = max(
             component_faces, key=lambda x: x[2]  # Sort by depth
         )
+
+        if debug:
+            print(f"Component with faces {component}: selected bottom with depth={bottom_depth:.2f}, area={bottom_area:.2f}")
 
         bottom_faces.append((bottom_face, bottom_depth, bottom_area))
 
@@ -632,7 +649,9 @@ def _detect_pockets(solid) -> Tuple[int, float, float, float, float]:
                     pocket_face_data.append((face, depth, area))
 
         # Group related faces into distinct pockets
-        pocket_groups = _group_pocket_faces(pocket_face_data, solid_bbox)
+        import os
+        debug_pockets = os.environ.get('DEBUG_POCKETS', '').lower() == 'true'
+        pocket_groups = _group_pocket_faces(pocket_face_data, solid_bbox, debug=debug_pockets)
 
         # Calculate statistics from grouped pockets
         pocket_count = len(pocket_groups)
