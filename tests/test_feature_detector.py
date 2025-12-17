@@ -1740,51 +1740,71 @@ class TestAccuratePocketVolume:
         assert features.pocket_total_volume < expected_total * 1.2
 
     def test_twelve_pockets_all_faces_thin_walls(self, temp_dir):
-        """Test 6 pockets on 3 faces (2 per face) separated by 0.5mm walls."""
-        # Create 2 pockets on 3 DIFFERENT faces with 0.5mm wall between pairs
-        # Each pocket: 15×15×5mm = 1125mm³
-        # Expected: 6 pockets, 6750mm³ total
+        """Test 12 pockets (2 on EACH of 6 faces) separated by 0.5mm walls."""
+        # Create 2 pockets on EACH face with 0.5mm wall between them
+        # Each pocket: 15×15×3mm = 675mm³
+        # Expected: 12 pockets, 8100mm³ total
 
-        # Main box: 100mm × 100mm × 100mm
-        box = cq.Workplane("XY").box(100, 100, 100)
+        # Main box: 200mm cube (very thick to absolutely prevent connection)
+        box = cq.Workplane("XY").box(200, 200, 200)
 
-        # Pocket dimensions
+        # Pocket dimensions - small and VERY shallow
         pocket_width = 15
-        pocket_depth = 5
+        pocket_depth = 3  # Only 3mm deep to prevent any connection
 
         # For 0.5mm wall between two 15mm pockets:
         # Centers at -7.75 and +7.75 (15.5mm apart)
-        # Note: 0.01mm walls are below CAD kernel geometric tolerance and get merged
         offset = 7.75
 
-        # +Z face (top): 2 pockets separated by 0.5mm wall
+        # Create all pockets using pushPoints to ensure proper geometry
+        # Position each pair at different locations to avoid alignment issues
+
+        # +Z face (top): 2 pockets in center
         result = (box.faces(">Z").workplane()
                   .pushPoints([(-offset, 0), (offset, 0)])
                   .rect(pocket_width, pocket_width)
                   .cutBlind(-pocket_depth))
 
-        # +Y face (front): 2 pockets separated by 0.5mm wall
+        # -Z face (bottom): 2 pockets offset in Y direction
+        result = (result.faces("<Z").workplane()
+                  .pushPoints([(0, -offset), (0, offset)])
+                  .rect(pocket_width, pocket_width)
+                  .cutBlind(-pocket_depth))
+
+        # +Y face (front): 2 pockets offset in X, shifted up in Z
         result = (result.faces(">Y").workplane()
                   .pushPoints([(-offset, 20), (offset, 20)])
                   .rect(pocket_width, pocket_width)
                   .cutBlind(-pocket_depth))
 
-        # +X face (right): 2 pockets separated by 0.5mm wall
-        result = (result.faces(">X").workplane()
-                  .pushPoints([(20, -offset), (20, offset)])
+        # -Y face (back): 2 pockets offset in X, shifted down in Z
+        result = (result.faces("<Y").workplane()
+                  .pushPoints([(-offset, -20), (offset, -20)])
                   .rect(pocket_width, pocket_width)
                   .cutBlind(-pocket_depth))
 
-        step_path = os.path.join(temp_dir, "six_pockets_three_faces.step")
+        # +X face (right): 2 pockets offset in Y, shifted up in Z
+        result = (result.faces(">X").workplane()
+                  .pushPoints([(-offset, 25), (offset, 25)])
+                  .rect(pocket_width, pocket_width)
+                  .cutBlind(-pocket_depth))
+
+        # -X face (left): 2 pockets offset in Y, shifted down in Z
+        result = (result.faces("<X").workplane()
+                  .pushPoints([(-offset, -25), (offset, -25)])
+                  .rect(pocket_width, pocket_width)
+                  .cutBlind(-pocket_depth))
+
+        step_path = os.path.join(temp_dir, "twelve_pockets_all_faces.step")
         cq.exporters.export(result, step_path)
 
         features, confidence = detect_bbox_and_volume(step_path)
 
-        # Should detect 6 separate pockets
-        assert features.pocket_count == 6, f"Expected 6 pockets, got {features.pocket_count}"
+        # Should detect 12 separate pockets
+        assert features.pocket_count == 12, f"Expected 12 pockets, got {features.pocket_count}"
 
-        # Total volume should be ~6750mm³ (6 × 1125mm³)
-        expected_total = 6750
+        # Total volume should be ~13500mm³ (12 × 1125mm³)
+        expected_total = 13500
         assert features.pocket_total_volume > expected_total * 0.8, \
             f"Expected volume ~{expected_total}mm³, got {features.pocket_total_volume}mm³"
         assert features.pocket_total_volume < expected_total * 1.2, \
