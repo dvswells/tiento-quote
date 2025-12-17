@@ -1207,7 +1207,100 @@ Extend `modules/file_handler.py`:
 
 ---
 
-### `text` Prompt 22 — DFM analyzer MVP (derived checks first)
+### `text` Prompt 22 — Multi-axis pocket detection
+
+**Objective:**
+Extend pocket detection to handle pockets machined from any face orientation (±X, ±Y, ±Z axes), not just top-down pockets from the Z-axis.
+
+**Current Limitation:**
+The existing implementation (Prompt 20-21) only detects pockets on the top face (Z-axis). Pockets machined from side faces (e.g., a pocket on the ±X or ±Y face) are not detected because `_is_pocket_face()` only checks if faces are inset below the top surface.
+
+**Implementation Requirements:**
+- Modify `_is_pocket_face(face, solid_bbox)` to detect inset planar faces on all six bounding box faces (±X, ±Y, ±Z)
+- For each major axis direction, check if planar faces are inset from that boundary
+- Update `_estimate_pocket_depth(face, solid_bbox)` to calculate depth relative to the appropriate bounding face (not just top)
+- Determine pocket orientation (which axis it's machined from)
+- Maintain conservative approach: only detect clear pockets with >1mm inset and >0.5mm depth
+- Return same statistics: count, avg_depth, max_depth, total_volume, confidence
+
+**Detection Strategy:**
+1. For each planar face, determine which bounding box face(s) it's parallel to
+2. Check if face is inset from that boundary (not at the edge)
+3. Calculate depth as distance from face to nearest boundary in perpendicular direction
+4. Apply same filtering criteria (minimum depth, reasonable dimensions)
+
+**TDD Test Requirements:**
+Create `TestMultiAxisPocketDetection` with at least 8 tests:
+- Box with pocket on +X face (side pocket) → detected
+- Box with pocket on -Y face (side pocket) → detected
+- Box with pocket on top face (Z-axis) → still detected (regression test)
+- Box with pockets on multiple axes → all detected
+- Depth calculation correct for side pockets
+- Total volume includes pockets from all orientations
+- Complex part with holes and multi-axis pockets → no crashes
+- Confidence remains appropriate (0.8 with volume)
+
+**Acceptance Criteria:**
+- Pockets machined from any of the six primary face orientations are detected
+- Depth and volume calculations are correct for all orientations
+- Backward compatible: existing top-down pocket tests still pass
+- Conservative: undercounts rather than overcounts when ambiguous
+- All tests pass (expected: +8 new tests, ~286 total)
+
+---
+
+### `text` Prompt 23 — Accurate pocket volume calculation (face grouping)
+
+**Objective:**
+Improve pocket volume calculation accuracy by grouping related planar faces (bottom + walls) into single pocket entities, rather than counting each face as a separate pocket.
+
+**Current Limitation:**
+The existing implementation (Prompt 21) counts each planar face as a separate pocket. When `.cutBlind()` creates a pocket, it generates 1 bottom face + 4 wall faces. Each wall face gets calculated as: wall_area × depth_to_boundary, resulting in 2-3x volume overestimation. For example, a 20×15×10mm pocket (expected 3000mm³) returns ~6500mm³.
+
+**Implementation Requirements:**
+- Add face grouping logic to cluster related planar faces into pocket entities
+- Identify pocket bottom face (deepest inset face in the group)
+- Identify pocket wall faces (connected perpendicular faces)
+- Calculate true pocket volume using bottom face area × actual pocket depth
+- Exclude wall faces from volume calculation (they define pocket boundaries, not volume)
+- Maintain conservative approach for ambiguous cases
+- Return improved statistics with more accurate total_volume
+
+**Face Grouping Strategy:**
+1. For each detected pocket face, find connected faces (sharing edges)
+2. Group faces that form a pocket cavity (bottom + perpendicular walls)
+3. Identify the bottom face as the one most inset from the boundary
+4. Calculate volume using only the bottom face: bottom_area × pocket_depth
+5. Update pocket_count to reflect distinct pockets, not individual faces
+
+**Alternative Conservative Approach:**
+If face grouping proves complex:
+- Apply volume correction factor (divide by estimated faces per pocket)
+- Or use convex hull/bounding approach for pocket cavity estimation
+- Document approximation method and expected accuracy range
+
+**TDD Test Requirements:**
+Create `TestAccuratePocketVolume` with at least 8 tests:
+- Rectangular pocket volume within 20% accuracy (not 3x)
+- Verify 20×15×10mm pocket returns ~3000mm³ ±20%
+- L-shaped pocket volume calculated correctly
+- Multiple separate pockets: each volume accurate
+- Deep pocket vs shallow pocket volume ratio correct
+- Pocket with angled walls (if grouping supports it)
+- Volume comparison: new method vs old method shows improvement
+- Backward compatibility: count and depth statistics still valid
+
+**Acceptance Criteria:**
+- Pocket volume accuracy improves from 3x overestimate to <20% error for simple pockets
+- Pocket count reflects distinct pockets, not individual faces
+- Volume calculation is deterministic and consistent
+- Conservative: better to slightly underestimate than grossly overestimate
+- All tests pass (expected: +8 new tests, ~294 total)
+- Update confidence to 0.9 when accurate volume computed
+
+---
+
+### `text` Prompt 24 — DFM analyzer MVP (derived checks first)
 
 Create `modules/dfm_analyzer.py`:
 
@@ -1228,7 +1321,7 @@ Create `modules/dfm_analyzer.py`:
 
 ---
 
-### `text` Prompt 23 — PDF generator page 1 (summary + tables)
+### `text` Prompt 25 — PDF generator page 1 (summary + tables)
 
 Create `modules/pdf_generator.py`:
 
@@ -1252,7 +1345,7 @@ Create `modules/pdf_generator.py`:
 
 ---
 
-### `text` Prompt 24 — PDF page 2: embed STL snapshot (headless-safe)
+### `text` Prompt 26 — PDF page 2: embed STL snapshot (headless-safe)
 
 Extend `pdf_generator.py`:
 
@@ -1269,7 +1362,7 @@ Extend `pdf_generator.py`:
 
 ---
 
-### `text` Prompt 25 — Mailto link builder + UI integration
+### `text` Prompt 27 — Mailto link builder + UI integration
 
 Create `modules/contact.py`:
 
@@ -1291,7 +1384,7 @@ Update `app.py`:
 
 ---
 
-### `text` Prompt 26 — Training script v0 (DB → model → pricing_coefficients.json)
+### `text` Prompt 28 — Training script v0 (DB → model → pricing_coefficients.json)
 
 Implement `training/train_model.py`:
 
@@ -1309,7 +1402,7 @@ Implement `training/train_model.py`:
 
 ---
 
-### `text` Prompt 27 — Tighten error handling + logging + final wiring
+### `text` Prompt 29 — Tighten error handling + logging + final wiring
 
 Polish pass:
 
