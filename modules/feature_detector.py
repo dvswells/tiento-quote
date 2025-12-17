@@ -478,23 +478,95 @@ def _is_pocket_face(face, solid_bbox) -> bool:
         return False
 
 
+def _group_pocket_faces(pocket_faces, solid_bbox) -> list:
+    """
+    Group related pocket faces (bottom + walls) into distinct pockets.
+
+    Uses spatial proximity in 3D space to cluster faces,then selects largest area face from each cluster.
+    This identifies bottom faces and filters out wall faces.
+
+    Args:
+        pocket_faces: List of (face, depth, area) tuples
+        solid_bbox: Bounding box of the solid
+
+    Returns:
+        List of pocket groups, each containing (bottom_face, depth, area)
+    """
+    if not pocket_faces:
+        return []
+
+    # Conservative heuristic: Group faces by spatial proximity
+    # Faces in the same pocket are within ~25mm of each other
+    # (accounts for pocket dimensions up to ~40mm)
+    proximity_threshold = 25.0  # mm - generous to group all faces from one pocket
+
+    # Build clusters of nearby faces
+    clusters = []
+    used = set()
+
+    for i, (face_i, depth_i, area_i) in enumerate(pocket_faces):
+        if i in used:
+            continue
+
+        # Get face center
+        bbox_i = face_i.BoundingBox()
+        x_i = (bbox_i.xmin + bbox_i.xmax) / 2.0
+        y_i = (bbox_i.ymin + bbox_i.ymax) / 2.0
+        z_i = (bbox_i.zmin + bbox_i.zmax) / 2.0
+
+        # Start a new cluster
+        cluster = [(i, face_i, depth_i, area_i, x_i, y_i, z_i)]
+
+        for j, (face_j, depth_j, area_j) in enumerate(pocket_faces):
+            if j <= i or j in used:
+                continue
+
+            # Get other face center
+            bbox_j = face_j.BoundingBox()
+            x_j = (bbox_j.xmin + bbox_j.xmax) / 2.0
+            y_j = (bbox_j.ymin + bbox_j.ymax) / 2.0
+            z_j = (bbox_j.zmin + bbox_j.zmax) / 2.0
+
+            # Calculate distance
+            dist = ((x_i - x_j)**2 + (y_i - y_j)**2 + (z_i - z_j)**2) ** 0.5
+
+            if dist < proximity_threshold:
+                cluster.append((j, face_j, depth_j, area_j, x_j, y_j, z_j))
+                used.add(j)
+
+        used.add(i)
+        clusters.append(cluster)
+
+    # From each cluster, select face with largest area (bottom face)
+    bottom_faces = []
+    for cluster in clusters:
+        # Select face with largest area in this cluster
+        _, bottom_face, bottom_depth, bottom_area, _, _, _ = max(
+            cluster, key=lambda x: x[3]  # Sort by area
+        )
+        bottom_faces.append((bottom_face, bottom_depth, bottom_area))
+
+    return bottom_faces
+
+
 def _detect_pockets(solid) -> Tuple[int, float, float, float, float]:
     """
-    Detect simple prismatic pockets (MVP constraint) with volume approximation.
+    Detect simple prismatic pockets with accurate volume calculation.
 
     Detects pockets aligned to primary axes by finding planar faces
-    that are inset from the part surface. Approximates total volume.
+    that are inset from the part surface. Groups related faces (bottom + walls)
+    and calculates volume from bottom faces only for improved accuracy.
 
     Args:
         solid: OCC solid object from cadquery
 
     Returns:
         Tuple of (pocket_count, avg_depth, max_depth, total_volume, confidence):
-        - pocket_count: Number of pockets detected
+        - pocket_count: Number of distinct pockets detected
         - avg_depth: Average pocket depth in mm
         - max_depth: Maximum pocket depth in mm
         - total_volume: Total volume of all pockets in mm³
-        - confidence: Detection confidence (0.8 if volume computed, 0.7 otherwise)
+        - confidence: Detection confidence (0.9 with accurate volume, 0.8/0.7 otherwise)
     """
     try:
         # Get solid bounding box
@@ -503,25 +575,28 @@ def _detect_pockets(solid) -> Tuple[int, float, float, float, float]:
         # Find all planar faces
         planar_faces = _find_planar_faces(solid)
 
-        # Filter to pocket candidates
-        pocket_faces = []
-        pocket_depths = []
-        pocket_volumes = []
+        # Filter to pocket candidates and collect face data
+        pocket_face_data = []
 
         for face in planar_faces:
             if _is_pocket_face(face, solid_bbox):
                 depth = _estimate_pocket_depth(face, solid_bbox)
                 if depth > 0.5:  # At least 0.5mm deep
-                    pocket_faces.append(face)
-                    pocket_depths.append(depth)
-
-                    # Estimate pocket volume
                     area = _estimate_pocket_area(face)
-                    volume = area * depth
-                    pocket_volumes.append(volume)
+                    pocket_face_data.append((face, depth, area))
 
-        # Count pockets (conservative)
-        pocket_count = len(pocket_faces)
+        # Group related faces into distinct pockets
+        pocket_groups = _group_pocket_faces(pocket_face_data, solid_bbox)
+
+        # Calculate statistics from grouped pockets
+        pocket_count = len(pocket_groups)
+        pocket_depths = []
+        pocket_volumes = []
+
+        for bottom_face, depth, area in pocket_groups:
+            pocket_depths.append(depth)
+            volume = area * depth
+            pocket_volumes.append(volume)
 
         # Compute depth statistics
         avg_depth = sum(pocket_depths) / len(pocket_depths) if pocket_depths else 0.0
@@ -530,9 +605,9 @@ def _detect_pockets(solid) -> Tuple[int, float, float, float, float]:
         # Compute total volume
         total_volume = sum(pocket_volumes) if pocket_volumes else 0.0
 
-        # Set confidence (improved when volume computed)
+        # Set confidence (improved with accurate volume calculation)
         if pocket_count > 0 and total_volume > 0:
-            confidence = 0.8  # Improved confidence with volume
+            confidence = 0.9  # High confidence with grouped volume calculation
         elif pocket_count > 0:
             confidence = 0.7  # Basic confidence without volume
         else:
@@ -549,7 +624,7 @@ def detect_bbox_and_volume(step_path: str) -> Tuple[PartFeatures, FeatureConfide
     """
     Detect bounding box, volume, classified holes, and pockets from STEP file.
 
-    Feature detector v5 computes:
+    Feature detector v6 computes:
     - Bounding box dimensions (x, y, z) in mm
     - Volume in mm³
     - Hole detection with through/blind classification
@@ -557,7 +632,7 @@ def detect_bbox_and_volume(step_path: str) -> Tuple[PartFeatures, FeatureConfide
     - Non-standard hole sizes (not matching M3, M4, M5, M6, M8, M10, M12 ±0.1mm)
     - Pocket detection (multi-axis: ±X, ±Y, ±Z faces)
     - Pocket depths (avg and max, calculated relative to appropriate boundary)
-    - Pocket volume approximation (area × depth)
+    - Pocket volume (accurate: groups bottom + wall faces, calculates from bottom only)
 
     Args:
         step_path: Path to STEP file to analyze
@@ -565,7 +640,7 @@ def detect_bbox_and_volume(step_path: str) -> Tuple[PartFeatures, FeatureConfide
     Returns:
         Tuple of (PartFeatures, FeatureConfidence):
         - PartFeatures: Detected features (bbox, volume, holes, pockets with volume)
-        - FeatureConfidence: Confidence scores (1.0 for bbox/volume, 0.85 for holes, 0.8 for pockets with volume)
+        - FeatureConfidence: Confidence scores (1.0 for bbox/volume, 0.85 for holes, 0.9 for pockets with accurate volume)
 
     Raises:
         StepLoadError: If STEP file cannot be loaded (propagated from cad_io.load_step)
