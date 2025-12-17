@@ -12,6 +12,8 @@ from modules.feature_detector import BoundingBoxLimitError
 from modules.pricing_engine import ModelNotReadyError, InvalidQuantityError
 from modules.visualization import step_to_stl, compute_adaptive_deflection, build_threejs_viewer_html
 from modules.settings import get_settings
+from modules.pdf_generator import generate_quote_pdf
+from modules.contact import build_mailto_link
 
 
 # Page configuration
@@ -231,6 +233,39 @@ The price displayed is the system's pre-quotation (for reference ONLY), and the 
 
 Prices exclude VAT and shipping.
         """)
+
+        # Action buttons
+        st.divider()
+        col_pdf, col_contact = st.columns(2)
+
+        with col_pdf:
+            # Download PDF Quote button
+            try:
+                # Update result with STL path for PDF page 2
+                result.stl_file_path = tmp_stl_path if (tmp_stl_path and os.path.exists(tmp_stl_path)) else None
+
+                pdf_bytes = generate_quote_pdf(result)
+                st.download_button(
+                    label="📄 Download PDF Quote",
+                    data=pdf_bytes,
+                    file_name=f"quote_{result.part_id}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"Could not generate PDF: {str(e)}")
+
+        with col_contact:
+            # Contact for Manual Review link/button
+            try:
+                mailto_url = build_mailto_link(result)
+                st.link_button(
+                    label="📧 Contact for Manual Review",
+                    url=mailto_url,
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"Could not generate contact link: {str(e)}")
 
         # Part ID for reference
         st.caption(f"Part ID: {result.part_id}")
