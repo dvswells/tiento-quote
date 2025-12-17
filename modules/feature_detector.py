@@ -478,12 +478,62 @@ def _is_pocket_face(face, solid_bbox) -> bool:
         return False
 
 
+def _faces_share_edge(face_a, face_b) -> bool:
+    """
+    Check if two faces share at least one edge (topological connectivity).
+
+    Args:
+        face_a: First face
+        face_b: Second face
+
+    Returns:
+        True if faces share an edge (are topologically connected)
+    """
+    try:
+        # Get edges from both faces
+        edges_a = face_a.Edges()
+        edges_b = face_b.Edges()
+
+        # Check if any edge from face_a matches any edge from face_b
+        # Compare using edge center points (simpler and more reliable)
+        tolerance = 0.01  # mm tolerance for geometric comparison
+
+        for edge_a in edges_a:
+            # Get center point of edge_a
+            try:
+                center_a = edge_a.Center()
+                ax, ay, az = center_a.x, center_a.y, center_a.z
+            except:
+                continue
+
+            for edge_b in edges_b:
+                # Get center point of edge_b
+                try:
+                    center_b = edge_b.Center()
+                    bx, by, bz = center_b.x, center_b.y, center_b.z
+                except:
+                    continue
+
+                # Calculate distance between edge centers
+                dist = ((ax - bx)**2 + (ay - by)**2 + (az - bz)**2) ** 0.5
+
+                # If centers are very close, edges are likely the same
+                if dist < tolerance:
+                    return True
+
+        return False
+
+    except Exception:
+        return False
+
+
 def _group_pocket_faces(pocket_faces, solid_bbox) -> list:
     """
     Group related pocket faces (bottom + walls) into distinct pockets.
 
-    Uses spatial proximity in 3D space to cluster faces,then selects largest area face from each cluster.
-    This identifies bottom faces and filters out wall faces.
+    Uses topological connectivity (edge sharing) to identify faces belonging
+    to the same pocket. Finds connected components via graph traversal.
+    This is robust regardless of wall thickness between pockets.
 
     Args:
         pocket_faces: List of (face, depth, area) tuples
@@ -495,55 +545,51 @@ def _group_pocket_faces(pocket_faces, solid_bbox) -> list:
     if not pocket_faces:
         return []
 
-    # Conservative heuristic: Group faces by spatial proximity
-    # Faces in the same pocket are within ~25mm of each other
-    # (accounts for pocket dimensions up to ~40mm)
-    proximity_threshold = 25.0  # mm - generous to group all faces from one pocket
+    n = len(pocket_faces)
 
-    # Build clusters of nearby faces
-    clusters = []
-    used = set()
+    # Build adjacency graph based on edge sharing
+    # adjacency[i] = list of indices j where face i shares edge with face j
+    adjacency = [[] for _ in range(n)]
 
-    for i, (face_i, depth_i, area_i) in enumerate(pocket_faces):
-        if i in used:
-            continue
+    for i in range(n):
+        face_i = pocket_faces[i][0]
+        for j in range(i + 1, n):
+            face_j = pocket_faces[j][0]
 
-        # Get face center
-        bbox_i = face_i.BoundingBox()
-        x_i = (bbox_i.xmin + bbox_i.xmax) / 2.0
-        y_i = (bbox_i.ymin + bbox_i.ymax) / 2.0
-        z_i = (bbox_i.zmin + bbox_i.zmax) / 2.0
+            if _faces_share_edge(face_i, face_j):
+                adjacency[i].append(j)
+                adjacency[j].append(i)
 
-        # Start a new cluster
-        cluster = [(i, face_i, depth_i, area_i, x_i, y_i, z_i)]
+    # Find connected components using DFS
+    visited = [False] * n
+    components = []
 
-        for j, (face_j, depth_j, area_j) in enumerate(pocket_faces):
-            if j <= i or j in used:
-                continue
+    def dfs(node, component):
+        visited[node] = True
+        component.append(node)
+        for neighbor in adjacency[node]:
+            if not visited[neighbor]:
+                dfs(neighbor, component)
 
-            # Get other face center
-            bbox_j = face_j.BoundingBox()
-            x_j = (bbox_j.xmin + bbox_j.xmax) / 2.0
-            y_j = (bbox_j.ymin + bbox_j.ymax) / 2.0
-            z_j = (bbox_j.zmin + bbox_j.zmax) / 2.0
+    for i in range(n):
+        if not visited[i]:
+            component = []
+            dfs(i, component)
+            components.append(component)
 
-            # Calculate distance
-            dist = ((x_i - x_j)**2 + (y_i - y_j)**2 + (z_i - z_j)**2) ** 0.5
-
-            if dist < proximity_threshold:
-                cluster.append((j, face_j, depth_j, area_j, x_j, y_j, z_j))
-                used.add(j)
-
-        used.add(i)
-        clusters.append(cluster)
-
-    # From each cluster, select face with largest area (bottom face)
+    # From each connected component, select the bottom face
+    # Bottom face has maximum depth (deepest inset)
     bottom_faces = []
-    for cluster in clusters:
-        # Select face with largest area in this cluster
-        _, bottom_face, bottom_depth, bottom_area, _, _, _ = max(
-            cluster, key=lambda x: x[3]  # Sort by area
+    for component in components:
+        # Get all faces in this component
+        component_faces = [(idx, pocket_faces[idx][0], pocket_faces[idx][1], pocket_faces[idx][2])
+                          for idx in component]
+
+        # Select face with maximum depth (bottom is deepest)
+        _, bottom_face, bottom_depth, bottom_area = max(
+            component_faces, key=lambda x: x[2]  # Sort by depth
         )
+
         bottom_faces.append((bottom_face, bottom_depth, bottom_area))
 
     return bottom_faces

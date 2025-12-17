@@ -1707,3 +1707,36 @@ class TestAccuratePocketVolume:
             assert confidence.pockets >= 0.9
             assert confidence.pockets <= 1.0
 
+    def test_two_pockets_separated_by_thin_wall_top_down(self, temp_dir):
+        """Test that two pockets separated by 0.001mm wall are correctly identified as TWO pockets."""
+        # Create two pockets with only 0.001mm wall between them (top-down Z-axis)
+        # Each pocket: 20×15×10mm = 3000mm³
+        # Expected: 2 pockets, 6000mm³ total
+        box_with_close_pockets = (
+            cq.Workplane("XY")
+            .box(60, 50, 30)
+            .faces(">Z")
+            .workplane()
+            .center(-10.5, 0)  # Position first pocket
+            .rect(20, 15)
+            .cutBlind(-10)
+            .faces(">Z")
+            .workplane()
+            .center(21.0, 0)  # Position second pocket (0.001mm wall: -10.5+10 to 10.5-10 = 0.001mm gap)
+            .rect(20, 15)
+            .cutBlind(-10)
+        )
+        step_path = os.path.join(temp_dir, "two_pockets_thin_wall_z.step")
+        cq.exporters.export(box_with_close_pockets, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should detect 2 separate pockets, not 1
+        assert features.pocket_count == 2, f"Expected 2 pockets, got {features.pocket_count}"
+
+        # Total volume should be ~6000mm³ (two 3000mm³ pockets)
+        expected_total = 6000
+        assert features.pocket_total_volume > expected_total * 0.8
+        assert features.pocket_total_volume < expected_total * 1.2
+
+
