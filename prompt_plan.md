@@ -1449,7 +1449,7 @@ Added PyPDF2>=3.0.0 to requirements.txt for PDF text extraction in tests.
 
 ---
 
-### `text` Prompt 26 — PDF page 2: embed STL snapshot (headless-safe)
+### `text` Prompt 26 — PDF page 2: embed STL snapshot (headless-safe) [COMPLETE]
 
 Extend `pdf_generator.py`:
 
@@ -1463,6 +1463,30 @@ Extend `pdf_generator.py`:
 **Acceptance:**
 
 * If rendering fails, fall back gracefully to page 1 only (and log).
+
+**Implementation:** Extended `modules/pdf_generator.py` with page 2 STL rendering:
+- New function `_render_stl_snapshot()`: Headless-safe matplotlib rendering
+  * Uses Poly3DCollection for 3D mesh visualization from numpy-stl
+  * Overlays bbox dimensions in title: "Dimensions: X × Y × Z mm"
+  * Returns PNG image buffer or None on failure
+- Modified `generate_quote_pdf()` to conditionally add page 2:
+  * Page break after disclaimer
+  * "3D Part Preview" centered heading
+  * Rendered STL image (170mm width, proper aspect ratio)
+  * Graceful fallback: page 1 only if STL path missing or rendering fails
+  * Logging for success/failure scenarios
+
+**Tests:** 4 new tests in `tests/test_pdf_generator.py`:
+- PDF with STL is larger than without (>50% size increase)
+- PDF contains "3D Part Preview" heading
+- Graceful fallback with invalid STL path
+- Graceful fallback with no STL path
+
+Added dependencies: numpy-stl>=3.0.0, matplotlib>=3.5.0
+
+**Tests:** All 15 PDF generator tests passing, 328 total tests passing
+
+**Commit:** f3b2031
 
 ---
 
