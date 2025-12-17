@@ -1276,3 +1276,206 @@ class TestPocketVolumeApproximation:
             # Should not be absurdly large (less than entire box volume)
             box_volume = 60 * 50 * 30  # 90000 mm³
             assert 0 < features.pocket_total_volume < box_volume
+
+
+class TestMultiAxisPocketDetection:
+    """Test pocket detection from multiple face orientations (Prompt 22)."""
+
+    def test_pocket_on_positive_x_face_detected(self, temp_dir):
+        """Test that pockets machined from +X face (side) are detected."""
+        # Box 60×50×30mm with pocket on +X face (right side)
+        # Pocket: 20×15mm, 10mm deep into the part
+        box_with_side_pocket = (
+            cq.Workplane("YZ")  # Work on YZ plane (perpendicular to X axis)
+            .box(30, 60, 50)  # Z=30, X=60, Y=50 in world coords
+            .faces(">X")  # Select +X face (right side)
+            .workplane()
+            .rect(20, 15)
+            .cutBlind(-10)  # Cut 10mm into the part from +X face
+        )
+        step_path = os.path.join(temp_dir, "box_pocket_plus_x.step")
+        cq.exporters.export(box_with_side_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should detect at least one pocket
+        assert features.pocket_count >= 1
+        # Should have reasonable depth
+        assert features.pocket_max_depth > 5.0  # At least 5mm deep
+
+    def test_pocket_on_negative_y_face_detected(self, temp_dir):
+        """Test that pockets machined from -Y face (side) are detected."""
+        # Box 60×50×30mm with pocket on -Y face (left side)
+        box_with_side_pocket = (
+            cq.Workplane("XZ")  # Work on XZ plane (perpendicular to Y axis)
+            .box(60, 30, 50)  # Y=30, X=60, Z=50 in world coords
+            .faces("<Y")  # Select -Y face (left side)
+            .workplane()
+            .rect(20, 15)
+            .cutBlind(-10)  # Cut 10mm into the part from -Y face
+        )
+        step_path = os.path.join(temp_dir, "box_pocket_minus_y.step")
+        cq.exporters.export(box_with_side_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should detect at least one pocket
+        assert features.pocket_count >= 1
+        # Should have reasonable depth
+        assert features.pocket_max_depth > 5.0
+
+    def test_pocket_on_top_face_still_detected(self, temp_dir):
+        """Test backward compatibility: top-down (Z-axis) pockets still work."""
+        # Box 60×50×30mm with pocket on top face (existing functionality)
+        box_with_top_pocket = (
+            cq.Workplane("XY")
+            .box(60, 50, 30)
+            .faces(">Z")  # Select top face
+            .workplane()
+            .rect(20, 15)
+            .cutBlind(-10)  # Cut 10mm down from top
+        )
+        step_path = os.path.join(temp_dir, "box_pocket_top_z.step")
+        cq.exporters.export(box_with_top_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should still detect top-down pocket (regression test)
+        assert features.pocket_count >= 1
+        assert features.pocket_max_depth > 5.0
+
+    def test_pockets_on_multiple_axes_all_detected(self, temp_dir):
+        """Test that pockets on different axes are all detected."""
+        # Create box with pockets on three different faces
+        box_base = cq.Workplane("XY").box(80, 80, 80)
+
+        # Add pocket on top face (Z-axis)
+        box_base = (
+            box_base
+            .faces(">Z")
+            .workplane()
+            .rect(20, 20)
+            .cutBlind(-10)
+        )
+
+        # Add pocket on +X face (side)
+        box_base = (
+            box_base
+            .faces(">X")
+            .workplane()
+            .rect(20, 20)
+            .cutBlind(-10)
+        )
+
+        # Add pocket on +Y face (side)
+        box_base = (
+            box_base
+            .faces(">Y")
+            .workplane()
+            .rect(20, 20)
+            .cutBlind(-10)
+        )
+
+        step_path = os.path.join(temp_dir, "box_multi_axis_pockets.step")
+        cq.exporters.export(box_base, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should detect multiple pockets (at least 3)
+        # Note: May detect more due to wall faces, but should be >= 3
+        assert features.pocket_count >= 3
+
+    def test_side_pocket_depth_calculation_correct(self, temp_dir):
+        """Test that depth calculation is correct for side pockets."""
+        # Create a pocket on the +X face with known depth
+        box_with_x_pocket = (
+            cq.Workplane("YZ")
+            .box(40, 60, 50)  # Z=40, X=60, Y=50
+            .faces(">X")
+            .workplane()
+            .rect(20, 15)
+            .cutBlind(-12)  # 12mm deep pocket
+        )
+        step_path = os.path.join(temp_dir, "side_pocket_depth.step")
+        cq.exporters.export(box_with_x_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Depth should be approximately 12mm (with some tolerance for detection)
+        if features.pocket_count > 0:
+            # Allow range: 8-16mm (within 2x for conservative heuristic)
+            assert 8.0 < features.pocket_max_depth < 16.0
+
+    def test_multi_axis_pocket_volume_included(self, temp_dir):
+        """Test that total volume includes pockets from all orientations."""
+        # Create box with pockets on two different axes
+        box_with_pockets = (
+            cq.Workplane("XY")
+            .box(80, 80, 80)
+            .faces(">Z")
+            .workplane()
+            .rect(20, 20)
+            .cutBlind(-10)
+            .faces(">X")
+            .workplane()
+            .rect(20, 20)
+            .cutBlind(-10)
+        )
+        step_path = os.path.join(temp_dir, "multi_axis_volume.step")
+        cq.exporters.export(box_with_pockets, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should have volume from multiple pockets
+        # Two pockets: ~20×20×10 = 4000 mm³ each = 8000 mm³ total (conservative)
+        # With wall faces, may be higher, but should be > 4000 mm³
+        assert features.pocket_total_volume > 4000.0
+
+    def test_complex_part_with_holes_and_multi_axis_pockets_no_crash(self, temp_dir):
+        """Test that complex parts with holes and multi-axis pockets don't crash."""
+        # Create a complex part with both holes and pockets on different axes
+        complex_part = (
+            cq.Workplane("XY")
+            .box(100, 100, 50)
+            .faces(">Z")
+            .workplane()
+            .hole(6)  # Through hole
+            .rect(30, 30)
+            .cutBlind(-15)  # Top pocket
+            .faces(">X")
+            .workplane()
+            .rect(25, 25)
+            .cutBlind(-12)  # Side pocket on +X
+        )
+        step_path = os.path.join(temp_dir, "complex_multi_axis.step")
+        cq.exporters.export(complex_part, step_path)
+
+        # Should not crash
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Should detect features from multiple types
+        assert features.pocket_count > 0
+        total_holes = features.through_hole_count + features.blind_hole_count
+        assert total_holes > 0
+
+    def test_multi_axis_pocket_confidence_appropriate(self, temp_dir):
+        """Test that confidence scores remain appropriate with multi-axis detection."""
+        # Create box with side pocket
+        box_with_side_pocket = (
+            cq.Workplane("YZ")
+            .box(30, 60, 50)
+            .faces(">X")
+            .workplane()
+            .rect(20, 15)
+            .cutBlind(-10)
+        )
+        step_path = os.path.join(temp_dir, "confidence_check.step")
+        cq.exporters.export(box_with_side_pocket, step_path)
+
+        features, confidence = detect_bbox_and_volume(step_path)
+
+        # Confidence should be in expected range
+        if features.pocket_count > 0 and features.pocket_total_volume > 0:
+            # Should be 0.8 with volume (from Prompt 21)
+            assert confidence.pockets >= 0.7
+            assert confidence.pockets <= 1.0

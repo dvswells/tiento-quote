@@ -279,9 +279,10 @@ def _find_planar_faces(solid) -> List:
 
 def _estimate_pocket_depth(face, solid_bbox) -> float:
     """
-    Estimate depth of a pocket from a planar face.
+    Estimate depth of a pocket from a planar face (multi-axis support).
 
-    Heuristic: Pocket depth is the distance from the face to the top of the part.
+    Determines which bounding box face the pocket is machined from and
+    calculates depth relative to that boundary.
 
     Args:
         face: Planar face (potential pocket bottom)
@@ -292,15 +293,68 @@ def _estimate_pocket_depth(face, solid_bbox) -> float:
     """
     try:
         bbox = face.BoundingBox()
+        tolerance = 0.5  # mm
 
-        # Get face Z position (center)
+        # Get face center position
+        face_x = (bbox.xmin + bbox.xmax) / 2.0
+        face_y = (bbox.ymin + bbox.ymax) / 2.0
         face_z = (bbox.zmin + bbox.zmax) / 2.0
 
-        # Solid top
-        solid_top_z = solid_bbox.zmax
+        # Get solid boundaries
+        solid_x_min, solid_x_max = solid_bbox.xmin, solid_bbox.xmax
+        solid_y_min, solid_y_max = solid_bbox.ymin, solid_bbox.ymax
+        solid_z_min, solid_z_max = solid_bbox.zmin, solid_bbox.zmax
 
-        # Depth is distance from face to top
-        depth = solid_top_z - face_z
+        # Calculate solid center and half-spans
+        solid_x_center = (solid_x_min + solid_x_max) / 2.0
+        solid_y_center = (solid_y_min + solid_y_max) / 2.0
+        solid_z_center = (solid_z_min + solid_z_max) / 2.0
+
+        solid_x_half = (solid_x_max - solid_x_min) / 2.0
+        solid_y_half = (solid_y_max - solid_y_min) / 2.0
+        solid_z_half = (solid_z_max - solid_z_min) / 2.0
+
+        # Determine which axis the pocket is oriented on
+        # Check each boundary and calculate depth from the nearest one
+        depths = []
+
+        # Check Z-axis (top/bottom faces)
+        if abs(face_x - solid_x_center) < solid_x_half - tolerance:
+            if abs(face_y - solid_y_center) < solid_y_half - tolerance:
+                # Face is inset in X and Y, likely Z-oriented pocket
+                depth_from_top = solid_z_max - face_z
+                depth_from_bottom = face_z - solid_z_min
+                if depth_from_top > tolerance and depth_from_top < depth_from_bottom:
+                    depths.append(depth_from_top)
+
+        # Check X-axis (left/right faces)
+        if abs(face_y - solid_y_center) < solid_y_half - tolerance:
+            if abs(face_z - solid_z_center) < solid_z_half - tolerance:
+                # Face is inset in Y and Z, likely X-oriented pocket
+                depth_from_max_x = solid_x_max - face_x
+                depth_from_min_x = face_x - solid_x_min
+                if depth_from_max_x > tolerance and depth_from_max_x < depth_from_min_x:
+                    depths.append(depth_from_max_x)
+                elif depth_from_min_x > tolerance and depth_from_min_x < depth_from_max_x:
+                    depths.append(depth_from_min_x)
+
+        # Check Y-axis (front/back faces)
+        if abs(face_x - solid_x_center) < solid_x_half - tolerance:
+            if abs(face_z - solid_z_center) < solid_z_half - tolerance:
+                # Face is inset in X and Z, likely Y-oriented pocket
+                depth_from_max_y = solid_y_max - face_y
+                depth_from_min_y = face_y - solid_y_min
+                if depth_from_max_y > tolerance and depth_from_max_y < depth_from_min_y:
+                    depths.append(depth_from_max_y)
+                elif depth_from_min_y > tolerance and depth_from_min_y < depth_from_max_y:
+                    depths.append(depth_from_min_y)
+
+        # Return the minimum valid depth (most conservative)
+        if depths:
+            return min(depths)
+
+        # Fallback: use Z-axis depth if no other depth found
+        depth = solid_z_max - face_z
 
         # Must be positive and reasonable
         if depth > 0.5:  # At least 0.5mm deep to be a pocket
@@ -347,9 +401,10 @@ def _estimate_pocket_area(face) -> float:
 
 def _is_pocket_face(face, solid_bbox) -> bool:
     """
-    Check if a planar face is a pocket (not an external face).
+    Check if a planar face is a pocket (not an external face) - multi-axis support.
 
     Heuristic: Pocket faces are inset from the part surface (not at boundaries).
+    Checks all six bounding box faces (±X, ±Y, ±Z) for potential pockets.
 
     Args:
         face: Planar face to check
@@ -360,35 +415,61 @@ def _is_pocket_face(face, solid_bbox) -> bool:
     """
     try:
         bbox = face.BoundingBox()
+        tolerance = 0.5  # mm
+        min_inset = 1.0  # mm - minimum inset from boundary to be a pocket
 
-        # Get face dimensions
+        # Get face center and dimensions
         face_x_min, face_x_max = bbox.xmin, bbox.xmax
         face_y_min, face_y_max = bbox.ymin, bbox.ymax
-        face_z = (bbox.zmin + bbox.zmax) / 2.0
+        face_z_min, face_z_max = bbox.zmin, bbox.zmax
+        face_x = (face_x_min + face_x_max) / 2.0
+        face_y = (face_y_min + face_y_max) / 2.0
+        face_z = (face_z_min + face_z_max) / 2.0
 
         # Get solid boundaries
         solid_x_min, solid_x_max = solid_bbox.xmin, solid_bbox.xmax
         solid_y_min, solid_y_max = solid_bbox.ymin, solid_bbox.ymax
         solid_z_min, solid_z_max = solid_bbox.zmin, solid_bbox.zmax
 
-        # Check if face is at a boundary (external face)
-        tolerance = 0.5  # mm
-
-        # Face at solid boundary -> not a pocket
-        if (abs(face_z - solid_z_max) < tolerance or
-            abs(face_z - solid_z_min) < tolerance):
-            return False
-
-        # Face must be inset (not touching X/Y boundaries)
+        # Check Z-axis pockets (traditional top-down)
+        # Face is inset in X and Y, and below top surface
         x_inset = (face_x_min > solid_x_min + tolerance and
                    face_x_max < solid_x_max - tolerance)
         y_inset = (face_y_min > solid_y_min + tolerance and
                    face_y_max < solid_y_max - tolerance)
 
-        # Must be inset in at least one direction
-        if x_inset or y_inset:
-            # Face is below top surface
-            if face_z < solid_z_max - 1.0:  # At least 1mm below top
+        # Check if face is below top surface (Z-axis pocket)
+        if (x_inset or y_inset) and face_z < solid_z_max - min_inset:
+            # Not at bottom boundary
+            if abs(face_z - solid_z_min) > tolerance:
+                return True
+
+        # Check X-axis pockets (side pockets perpendicular to X)
+        # Face is inset in Y and Z, and inset from +X or -X boundary
+        y_inset_full = (face_y_min > solid_y_min + tolerance and
+                        face_y_max < solid_y_max - tolerance)
+        z_inset = (face_z_min > solid_z_min + tolerance and
+                   face_z_max < solid_z_max - tolerance)
+
+        if (y_inset_full or z_inset):
+            # Check if inset from +X boundary
+            if solid_x_max - face_x > min_inset and abs(face_x - solid_x_min) > tolerance:
+                return True
+            # Check if inset from -X boundary
+            if face_x - solid_x_min > min_inset and abs(face_x - solid_x_max) > tolerance:
+                return True
+
+        # Check Y-axis pockets (side pockets perpendicular to Y)
+        # Face is inset in X and Z, and inset from +Y or -Y boundary
+        x_inset_full = (face_x_min > solid_x_min + tolerance and
+                        face_x_max < solid_x_max - tolerance)
+
+        if (x_inset_full or z_inset):
+            # Check if inset from +Y boundary
+            if solid_y_max - face_y > min_inset and abs(face_y - solid_y_min) > tolerance:
+                return True
+            # Check if inset from -Y boundary
+            if face_y - solid_y_min > min_inset and abs(face_y - solid_y_max) > tolerance:
                 return True
 
         return False
@@ -468,14 +549,14 @@ def detect_bbox_and_volume(step_path: str) -> Tuple[PartFeatures, FeatureConfide
     """
     Detect bounding box, volume, classified holes, and pockets from STEP file.
 
-    Feature detector v4 computes:
+    Feature detector v5 computes:
     - Bounding box dimensions (x, y, z) in mm
     - Volume in mm³
     - Hole detection with through/blind classification
     - Blind hole depth:diameter ratios
     - Non-standard hole sizes (not matching M3, M4, M5, M6, M8, M10, M12 ±0.1mm)
-    - Pocket detection (simple prismatic pockets, MVP constraint)
-    - Pocket depths (avg and max)
+    - Pocket detection (multi-axis: ±X, ±Y, ±Z faces)
+    - Pocket depths (avg and max, calculated relative to appropriate boundary)
     - Pocket volume approximation (area × depth)
 
     Args:
