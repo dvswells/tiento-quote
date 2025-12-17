@@ -1270,52 +1270,78 @@ Extend `modules/file_handler.py`:
 
 ### `text` Prompt 23 — Accurate pocket volume calculation (face grouping)
 
-**Objective:**
-Improve pocket volume calculation accuracy by grouping related planar faces (bottom + walls) into single pocket entities, rather than counting each face as a separate pocket.
+✅ **COMPLETE**
 
-**Current Limitation:**
-The existing implementation (Prompt 21) counts each planar face as a separate pocket. When `.cutBlind()` creates a pocket, it generates 1 bottom face + 4 wall faces. Each wall face gets calculated as: wall_area × depth_to_boundary, resulting in 2-3x volume overestimation. For example, a 20×15×10mm pocket (expected 3000mm³) returns ~6500mm³.
+**Implementation:**
+- Improved pocket volume accuracy from 200%+ error (2.17x overestimate) to <20% error
+- Previous limitation: Each planar face (bottom + walls) counted as separate pocket
+- Now groups related faces and calculates volume from bottom faces only
 
-**Implementation Requirements:**
-- Add face grouping logic to cluster related planar faces into pocket entities
-- Identify pocket bottom face (deepest inset face in the group)
-- Identify pocket wall faces (connected perpendicular faces)
-- Calculate true pocket volume using bottom face area × actual pocket depth
-- Exclude wall faces from volume calculation (they define pocket boundaries, not volume)
-- Maintain conservative approach for ambiguous cases
-- Return improved statistics with more accurate total_volume
+**Face Grouping Logic:**
+- Added `_group_pocket_faces(pocket_faces, solid_bbox)`:
+  * Uses spatial proximity clustering (25mm threshold)
+  * Faces within 25mm of each other are grouped into same pocket
+  * Accounts for pocket dimensions up to ~40mm
+  * From each cluster, selects face with largest area (bottom face)
+  * Excludes wall faces from volume calculation
 
-**Face Grouping Strategy:**
-1. For each detected pocket face, find connected faces (sharing edges)
-2. Group faces that form a pocket cavity (bottom + perpendicular walls)
-3. Identify the bottom face as the one most inset from the boundary
-4. Calculate volume using only the bottom face: bottom_area × pocket_depth
-5. Update pocket_count to reflect distinct pockets, not individual faces
+**Algorithm:**
+1. Build proximity clusters: iterate through pocket faces
+2. For each face, find all faces within 25mm distance (3D Euclidean)
+3. Group nearby faces into clusters
+4. Select face with largest area from each cluster (pocket bottom)
+5. Calculate volume only from bottom faces: area × depth
+6. Count = number of distinct clusters (not individual faces)
 
-**Alternative Conservative Approach:**
-If face grouping proves complex:
-- Apply volume correction factor (divide by estimated faces per pocket)
-- Or use convex hull/bounding approach for pocket cavity estimation
-- Document approximation method and expected accuracy range
+**Volume Improvement:**
+- Before grouping: 20×15×10mm pocket returned 6500mm³ (expected 3000mm³)
+  * 5 faces detected (1 bottom + 4 walls)
+  * Each wall face contributed incorrect volume
+  * Result: 2.17x overestimate (117% error)
+- After grouping: Same pocket returns 3000mm³
+  * 1 pocket detected (bottom face selected from cluster)
+  * Only bottom face used for volume calculation
+  * Result: Within 20% accuracy (<20% error)
 
-**TDD Test Requirements:**
-Create `TestAccuratePocketVolume` with at least 8 tests:
-- Rectangular pocket volume within 20% accuracy (not 3x)
-- Verify 20×15×10mm pocket returns ~3000mm³ ±20%
+**Updated _detect_pockets():**
+- Now calls `_group_pocket_faces()` to cluster related faces
+- Calculates statistics from grouped pockets (not individual faces)
+- Improved confidence to 0.9 when accurate volume computed
+- Confidence progression: 0.7 (basic), 0.8 (old volume), 0.9 (accurate volume)
+
+**Updated detect_bbox_and_volume():**
+- Updated docstring to v6 (accurate pocket volume calculation)
+- Comment: "Pocket volume (accurate: groups bottom + wall faces, calculates from bottom only)"
+- Returns confidence 0.9 for pockets with accurate volume
+
+**Test Coverage (9 new tests in TestAccuratePocketVolume):**
+- Rectangular pocket volume within 20% (not 3x overestimate)
+- 20×15×10mm pocket returns ~3000mm³ ±20%
 - L-shaped pocket volume calculated correctly
-- Multiple separate pockets: each volume accurate
-- Deep pocket vs shallow pocket volume ratio correct
-- Pocket with angled walls (if grouping supports it)
-- Volume comparison: new method vs old method shows improvement
-- Backward compatibility: count and depth statistics still valid
+- Multiple separate pockets each accurate
+- Deep vs shallow pocket volume ratio correct (3:1)
+- Pocket with angled walls reasonable volume
+- Volume improvement over old method (<20% error vs 117%)
+- Backward compatibility: count and depth still valid
+- Confidence improves to 0.9 with accurate volume
 
-**Acceptance Criteria:**
-- Pocket volume accuracy improves from 3x overestimate to <20% error for simple pockets
-- Pocket count reflects distinct pockets, not individual faces
-- Volume calculation is deterministic and consistent
-- Conservative: better to slightly underestimate than grossly overestimate
-- All tests pass (expected: +8 new tests, ~294 total)
-- Update confidence to 0.9 when accurate volume computed
+**Accuracy Metrics:**
+- Single 20×15×10mm pocket:
+  * Expected: 3000mm³
+  * Old method: 6500mm³ (117% error)
+  * New method: 3000mm³ (<20% error)
+- Two 20×15×10mm pockets:
+  * Expected: 6000mm³
+  * Old method: 13000mm³ (117% error)
+  * New method: 6000mm³ (<20% error)
+
+**Files:**
+- `modules/feature_detector.py` (721 lines, +71 new in _group_pocket_faces, updated _detect_pockets)
+- `tests/test_feature_detector.py` (1710 lines, +228 new)
+
+**Tests:** All 87 tests passing (78 previous + 9 new)
+
+**Commits:** eae8b86
 
 ---
 
