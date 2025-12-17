@@ -1490,7 +1490,7 @@ Added dependencies: numpy-stl>=3.0.0, matplotlib>=3.5.0
 
 ---
 
-### `text` Prompt 27 — Mailto link builder + UI integration
+### `text` Prompt 27 — Mailto link builder + UI integration [COMPLETE]
 
 Create `modules/contact.py`:
 
@@ -1503,12 +1503,42 @@ Create `modules/contact.py`:
 
 Update `app.py`:
 
-* Add “Download PDF Quote” button
-* Add “Contact for Manual Review” link/button
+* Add "Download PDF Quote" button
+* Add "Contact for Manual Review" link/button
 
 **Acceptance:**
 
 * No orphan features: everything is reachable from the UI.
+
+**Implementation:** Created `modules/contact.py` with mailto link builder:
+- `build_mailto_link()` function generates properly formatted mailto URLs
+  * Subject: "Manual Review Request - Part {UUID}"
+  * Body includes: Part ID, specifications (bbox, volume, features), quote info, DFM issues
+  * URL-encodes subject and body using urllib.parse.quote
+  * Default recipient: david@wellsglobal.eu
+  * Accepts custom recipient parameter
+
+Updated `app.py` Streamlit UI:
+- Added PDF generator and contact imports
+- New action buttons section after disclaimer:
+  * "📄 Download PDF Quote" button (st.download_button)
+  * "📧 Contact for Manual Review" button (st.link_button with mailto URL)
+  * Both buttons in 2-column layout with use_container_width=True
+  * Error handling for both functions
+  * Sets result.stl_file_path for PDF page 2 rendering
+
+**Tests:** 10 comprehensive tests in `tests/test_contact.py`:
+- Mailto URL format validation
+- Default/custom recipient handling
+- Part UUID in subject and body
+- Bbox dimensions and feature counts
+- Quote information inclusion
+- DFM issues formatting
+- URL encoding validation
+
+**Tests:** All 10 contact tests passing, 338 total tests passing
+
+**Commit:** 22ec5d4
 
 ---
 
