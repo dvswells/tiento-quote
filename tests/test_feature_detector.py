@@ -1740,31 +1740,51 @@ class TestAccuratePocketVolume:
         assert features.pocket_total_volume < expected_total * 1.2
 
     def test_twelve_pockets_all_faces_thin_walls(self, temp_dir):
-        """Test multiple pockets on multiple faces to validate topological grouping."""
-        # Create 4 pockets on same face (2×2 grid) to test comprehensive grouping
-        # Each pocket: 15×15×8mm = 1800mm³
-        # Expected: 4 pockets, 7200mm³ total
+        """Test 6 pockets on 3 faces (2 per face) separated by 0.5mm walls."""
+        # Create 2 pockets on 3 DIFFERENT faces with 0.5mm wall between pairs
+        # Each pocket: 15×15×5mm = 1125mm³
+        # Expected: 6 pockets, 6750mm³ total
 
-        # Main box: 200mm × 200mm × 50mm (thick enough for all pockets)
-        box = cq.Workplane("XY").box(200, 200, 50)
+        # Main box: 100mm × 100mm × 100mm
+        box = cq.Workplane("XY").box(100, 100, 100)
 
-        # Create 4 pockets in a 2×2 grid using pushPoints (creates all at once)
-        # Pockets at: (-40,-40), (-40,40), (40,-40), (40,40)
+        # Pocket dimensions
+        pocket_width = 15
+        pocket_depth = 5
+
+        # For 0.5mm wall between two 15mm pockets:
+        # Centers at -7.75 and +7.75 (15.5mm apart)
+        # Note: 0.01mm walls are below CAD kernel geometric tolerance and get merged
+        offset = 7.75
+
+        # +Z face (top): 2 pockets separated by 0.5mm wall
         result = (box.faces(">Z").workplane()
-                  .pushPoints([(-40, -40), (-40, 40), (40, -40), (40, 40)])
-                  .rect(15, 15)
-                  .cutBlind(-8))
+                  .pushPoints([(-offset, 0), (offset, 0)])
+                  .rect(pocket_width, pocket_width)
+                  .cutBlind(-pocket_depth))
 
-        step_path = os.path.join(temp_dir, "four_pockets_grid.step")
+        # +Y face (front): 2 pockets separated by 0.5mm wall
+        result = (result.faces(">Y").workplane()
+                  .pushPoints([(-offset, 20), (offset, 20)])
+                  .rect(pocket_width, pocket_width)
+                  .cutBlind(-pocket_depth))
+
+        # +X face (right): 2 pockets separated by 0.5mm wall
+        result = (result.faces(">X").workplane()
+                  .pushPoints([(20, -offset), (20, offset)])
+                  .rect(pocket_width, pocket_width)
+                  .cutBlind(-pocket_depth))
+
+        step_path = os.path.join(temp_dir, "six_pockets_three_faces.step")
         cq.exporters.export(result, step_path)
 
         features, confidence = detect_bbox_and_volume(step_path)
 
-        # Should detect 4 separate pockets
-        assert features.pocket_count == 4, f"Expected 4 pockets, got {features.pocket_count}"
+        # Should detect 6 separate pockets
+        assert features.pocket_count == 6, f"Expected 6 pockets, got {features.pocket_count}"
 
-        # Total volume should be ~7200mm³ (4 × 1800mm³)
-        expected_total = 7200
+        # Total volume should be ~6750mm³ (6 × 1125mm³)
+        expected_total = 6750
         assert features.pocket_total_volume > expected_total * 0.8, \
             f"Expected volume ~{expected_total}mm³, got {features.pocket_total_volume}mm³"
         assert features.pocket_total_volume < expected_total * 1.2, \
