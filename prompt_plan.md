@@ -1072,22 +1072,68 @@ Extend `modules/file_handler.py`:
 
 ### `text` Prompt 20 — Pocket detection v0 (simple prismatic pockets)
 
-Implement **MVP constraint**: only detect prismatic pockets aligned to primary axes (created by planar-face cuts).
+✅ **COMPLETE**
 
-Compute:
+**Implementation:**
+- Implemented MVP pocket detection for simple prismatic pockets aligned to primary axes
+- Conservative heuristic approach using planar face analysis
+- Returns count and depth statistics (volume deferred to Prompt 21)
 
-* `pocket_count`
-* `pocket_avg_depth`
-* `pocket_max_depth`
-  Leave `pocket_total_volume` at 0 for now (next step).
+**Pocket Detection Logic:**
+- Added `_find_planar_faces(solid)`: Finds all planar (PLANE type) faces in solid
+- Added `_is_pocket_face(face, solid_bbox)`: Checks if planar face is inset pocket
+  * Heuristic: Pocket faces are inset from part boundaries (not at X/Y/Z edges)
+  * Must be at least 1mm below top surface to qualify
+  * Uses 0.5mm tolerance for boundary detection
+  * Filters out external faces (top, bottom, sides)
+- Added `_estimate_pocket_depth(face, solid_bbox)`: Calculates depth from face to top
+  * Depth = solid_top_z - face_z
+  * Minimum 0.5mm deep to count as pocket
+- Added `_detect_pockets(solid)`: Main detection with statistics
 
-**TDD:**
+**Returns:**
+- `pocket_count`: Number of detected pockets
+- `pocket_avg_depth`: Average depth across all pockets (mm)
+- `pocket_max_depth`: Maximum depth of any pocket (mm)
+- `pocket_confidence`: 0.7 for heuristic detection
 
-* Generate a block with one rectangular pocket of known depth, assert detection.
+**MVP Constraint (as specified):**
+- Only detects simple prismatic pockets (planar bottom faces)
+- Aligned to primary axes (created by planar-face cuts)
+- Conservative: undercounts rather than overcounts
+- `pocket_total_volume` remains 0 (deferred to Prompt 21)
 
-**Acceptance:**
+**Error Handling:**
+- If detection fails, returns zeros and confidence=0.0
+- No crashes on complex geometry (safe conservative fallback)
+- Exception handling in all helper functions
 
-* If pocket detection fails, return 0 pockets and reduce confidence instead of crashing.
+**Updated detect_bbox_and_volume():**
+- Now calls `_detect_pockets(solid)`
+- Populates `pocket_count`, `pocket_avg_depth`, `pocket_max_depth`
+- Sets `pocket_confidence` in FeatureConfidence
+- Updated docstring to v3 (adds pocket detection)
+- Note: `pocket_total_volume` remains 0
+
+**Test Coverage (10 new tests in TestDetectPockets):**
+- Box with no pockets → detects 0
+- Box with one rectangular pocket → detected
+- Pocket depth detected correctly
+- Multiple pockets detected
+- Avg and max depth with different depths
+- Shallow pocket (2mm) handling
+- Deep pocket (18mm) detection
+- pocket_total_volume remains 0 (verified)
+- No crashes on complex geometry (holes + pockets)
+- Pocket confidence set correctly (0.7 when detected, 0.0 when none)
+
+**Files:**
+- `modules/feature_detector.py` (521 lines, +109 new)
+- `tests/test_feature_detector.py` (1104 lines, +205 new)
+
+**Tests:** All 270 tests passing (260 previous + 10 new)
+
+**Commits:** 1cdd664
 
 ---
 
