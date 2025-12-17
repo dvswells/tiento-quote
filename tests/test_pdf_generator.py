@@ -4,9 +4,11 @@ Tests for PDF Quote Generator
 Tests PDF generation from processing results.
 """
 
+import os
 import pytest
 from io import BytesIO
 from PyPDF2 import PdfReader
+import cadquery as cq
 
 from modules.pdf_generator import generate_quote_pdf
 from modules.domain import (
@@ -16,6 +18,7 @@ from modules.domain import (
     DfmIssue,
     QuoteResult
 )
+from modules.visualization import step_to_stl
 
 
 class TestPdfGeneration:
@@ -398,6 +401,213 @@ class TestPdfWithDfmIssues:
         pdf_bytes = generate_quote_pdf(result)
         # Should generate without error
         assert len(pdf_bytes) > 0
+
+
+class TestPdfPage2WithStl:
+    """Test PDF page 2 with STL snapshot."""
+
+    @pytest.fixture
+    def test_stl_file(self, tmp_path):
+        """Create a test STL file from a simple box."""
+        # Create a simple box
+        box = cq.Workplane("XY").box(50, 40, 30)
+        step_path = os.path.join(tmp_path, "test_box.step")
+        stl_path = os.path.join(tmp_path, "test_box.stl")
+
+        # Export to STEP then convert to STL
+        cq.exporters.export(box, step_path)
+        step_to_stl(step_path, stl_path, 0.1, 0.5)
+
+        return stl_path
+
+    def test_pdf_with_stl_is_larger_than_without(self, test_stl_file):
+        """PDF with STL snapshot should be larger than page 1 only."""
+        # Create result with STL path
+        result_with_stl = ProcessingResult(
+            part_id="test-with-stl",
+            step_file_path="/path/to/test.step",
+            stl_file_path=test_stl_file,
+            features=PartFeatures(
+                bounding_box_x=50.0,
+                bounding_box_y=40.0,
+                bounding_box_z=30.0,
+                volume=60000.0,
+                through_hole_count=0,
+                blind_hole_count=0,
+                blind_hole_avg_depth_to_diameter=0.0,
+                blind_hole_max_depth_to_diameter=0.0,
+                pocket_count=0,
+                pocket_total_volume=0.0,
+                pocket_avg_depth=0.0,
+                pocket_max_depth=0.0,
+                non_standard_hole_count=0
+            ),
+            confidence=FeatureConfidence(
+                bounding_box=0.9,
+                volume=0.9,
+                through_holes=0.0,
+                blind_holes=0.0,
+                pockets=0.0
+            ),
+            dfm_issues=[],
+            quote=None
+        )
+
+        # Create result without STL path
+        result_without_stl = ProcessingResult(
+            part_id="test-without-stl",
+            step_file_path="/path/to/test.step",
+            stl_file_path=None,  # No STL
+            features=PartFeatures(
+                bounding_box_x=50.0,
+                bounding_box_y=40.0,
+                bounding_box_z=30.0,
+                volume=60000.0,
+                through_hole_count=0,
+                blind_hole_count=0,
+                blind_hole_avg_depth_to_diameter=0.0,
+                blind_hole_max_depth_to_diameter=0.0,
+                pocket_count=0,
+                pocket_total_volume=0.0,
+                pocket_avg_depth=0.0,
+                pocket_max_depth=0.0,
+                non_standard_hole_count=0
+            ),
+            confidence=FeatureConfidence(
+                bounding_box=0.9,
+                volume=0.9,
+                through_holes=0.0,
+                blind_holes=0.0,
+                pockets=0.0
+            ),
+            dfm_issues=[],
+            quote=None
+        )
+
+        pdf_with_stl = generate_quote_pdf(result_with_stl)
+        pdf_without_stl = generate_quote_pdf(result_without_stl)
+
+        # PDF with STL should be significantly larger (has page 2 with image)
+        assert len(pdf_with_stl) > len(pdf_without_stl)
+        # Should be at least 50% larger due to image
+        assert len(pdf_with_stl) > len(pdf_without_stl) * 1.5
+
+    def test_pdf_with_stl_contains_preview_heading(self, test_stl_file):
+        """PDF with STL should contain '3D Part Preview' heading."""
+        result = ProcessingResult(
+            part_id="test-preview-heading",
+            step_file_path="/path/to/test.step",
+            stl_file_path=test_stl_file,
+            features=PartFeatures(
+                bounding_box_x=50.0,
+                bounding_box_y=40.0,
+                bounding_box_z=30.0,
+                volume=60000.0,
+                through_hole_count=0,
+                blind_hole_count=0,
+                blind_hole_avg_depth_to_diameter=0.0,
+                blind_hole_max_depth_to_diameter=0.0,
+                pocket_count=0,
+                pocket_total_volume=0.0,
+                pocket_avg_depth=0.0,
+                pocket_max_depth=0.0,
+                non_standard_hole_count=0
+            ),
+            confidence=FeatureConfidence(
+                bounding_box=0.9,
+                volume=0.9,
+                through_holes=0.0,
+                blind_holes=0.0,
+                pockets=0.0
+            ),
+            dfm_issues=[],
+            quote=None
+        )
+
+        pdf_bytes = generate_quote_pdf(result)
+        pdf_text = _extract_text_from_pdf(pdf_bytes)
+
+        assert "3D Part Preview" in pdf_text
+
+    def test_pdf_graceful_fallback_invalid_stl_path(self):
+        """PDF should fall back gracefully when STL path is invalid."""
+        result = ProcessingResult(
+            part_id="test-invalid-stl",
+            step_file_path="/path/to/test.step",
+            stl_file_path="/nonexistent/path/to/file.stl",  # Invalid path
+            features=PartFeatures(
+                bounding_box_x=50.0,
+                bounding_box_y=40.0,
+                bounding_box_z=30.0,
+                volume=60000.0,
+                through_hole_count=0,
+                blind_hole_count=0,
+                blind_hole_avg_depth_to_diameter=0.0,
+                blind_hole_max_depth_to_diameter=0.0,
+                pocket_count=0,
+                pocket_total_volume=0.0,
+                pocket_avg_depth=0.0,
+                pocket_max_depth=0.0,
+                non_standard_hole_count=0
+            ),
+            confidence=FeatureConfidence(
+                bounding_box=0.9,
+                volume=0.9,
+                through_holes=0.0,
+                blind_holes=0.0,
+                pockets=0.0
+            ),
+            dfm_issues=[],
+            quote=None
+        )
+
+        # Should generate PDF without error (graceful fallback)
+        pdf_bytes = generate_quote_pdf(result)
+        assert len(pdf_bytes) > 0
+
+        # Should not contain page 2 heading
+        pdf_text = _extract_text_from_pdf(pdf_bytes)
+        assert "3D Part Preview" not in pdf_text
+
+    def test_pdf_graceful_fallback_no_stl_path(self):
+        """PDF should fall back gracefully when no STL path provided."""
+        result = ProcessingResult(
+            part_id="test-no-stl",
+            step_file_path="/path/to/test.step",
+            stl_file_path=None,  # No STL path
+            features=PartFeatures(
+                bounding_box_x=50.0,
+                bounding_box_y=40.0,
+                bounding_box_z=30.0,
+                volume=60000.0,
+                through_hole_count=0,
+                blind_hole_count=0,
+                blind_hole_avg_depth_to_diameter=0.0,
+                blind_hole_max_depth_to_diameter=0.0,
+                pocket_count=0,
+                pocket_total_volume=0.0,
+                pocket_avg_depth=0.0,
+                pocket_max_depth=0.0,
+                non_standard_hole_count=0
+            ),
+            confidence=FeatureConfidence(
+                bounding_box=0.9,
+                volume=0.9,
+                through_holes=0.0,
+                blind_holes=0.0,
+                pockets=0.0
+            ),
+            dfm_issues=[],
+            quote=None
+        )
+
+        # Should generate PDF without error (page 1 only)
+        pdf_bytes = generate_quote_pdf(result)
+        assert len(pdf_bytes) > 0
+
+        # Should not contain page 2 heading
+        pdf_text = _extract_text_from_pdf(pdf_bytes)
+        assert "3D Part Preview" not in pdf_text
 
 
 # Helper functions

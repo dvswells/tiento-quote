@@ -5,18 +5,107 @@ Generates professional PDF quotes from processing results.
 Uses reportlab for PDF generation.
 """
 
+import logging
 from datetime import datetime
 from typing import Optional
 from io import BytesIO
 
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # Headless backend
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from stl import mesh
+
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 
 from modules.domain import ProcessingResult, DfmIssue
+
+logger = logging.getLogger(__name__)
+
+
+def _render_stl_snapshot(
+    stl_path: str,
+    bbox_x: float,
+    bbox_y: float,
+    bbox_z: float,
+    figsize: tuple = (8, 6),
+    dpi: int = 150
+) -> Optional[BytesIO]:
+    """
+    Render STL file as a 3D snapshot with bbox dimensions overlay.
+
+    Args:
+        stl_path: Path to STL file
+        bbox_x: Bounding box X dimension in mm
+        bbox_y: Bounding box Y dimension in mm
+        bbox_z: Bounding box Z dimension in mm
+        figsize: Figure size in inches (width, height)
+        dpi: Resolution in dots per inch
+
+    Returns:
+        BytesIO containing PNG image, or None if rendering fails
+    """
+    try:
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+        # Load STL file
+        stl_mesh = mesh.Mesh.from_file(stl_path)
+
+        # Create figure
+        fig = plt.figure(figsize=figsize, dpi=dpi)
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Create a Poly3DCollection from the mesh vectors
+        poly_collection = Poly3DCollection(
+            stl_mesh.vectors,
+            facecolors='lightblue',
+            edgecolors='gray',
+            linewidths=0.1,
+            alpha=0.8
+        )
+        ax.add_collection3d(poly_collection)
+
+        # Set axis limits based on bbox dimensions
+        max_dim = max(bbox_x, bbox_y, bbox_z)
+        ax.set_xlim([-max_dim/2, max_dim/2])
+        ax.set_ylim([-max_dim/2, max_dim/2])
+        ax.set_zlim([-max_dim/2, max_dim/2])
+
+        # Add labels
+        ax.set_xlabel('X (mm)', fontsize=10)
+        ax.set_ylabel('Y (mm)', fontsize=10)
+        ax.set_zlabel('Z (mm)', fontsize=10)
+
+        # Add title with dimensions
+        title = f'Part Preview\nDimensions: {bbox_x:.1f} × {bbox_y:.1f} × {bbox_z:.1f} mm'
+        ax.set_title(title, fontsize=12, fontweight='bold')
+
+        # Set viewing angle
+        ax.view_init(elev=25, azim=45)
+
+        # Tight layout
+        plt.tight_layout()
+
+        # Save to bytes
+        img_buffer = BytesIO()
+        plt.savefig(img_buffer, format='png', dpi=dpi, bbox_inches='tight')
+        img_buffer.seek(0)
+
+        # Clean up
+        plt.close(fig)
+
+        logger.info(f"Successfully rendered STL snapshot from {stl_path}")
+        return img_buffer
+
+    except Exception as e:
+        logger.warning(f"Failed to render STL snapshot: {e}")
+        return None
 
 
 def generate_quote_pdf(processing_result: ProcessingResult) -> bytes:
@@ -37,7 +126,10 @@ def generate_quote_pdf(processing_result: ProcessingResult) -> bytes:
     - DFM warnings (if any)
     - Disclaimer
 
-    Future: Page 2 with 3D preview (Prompt 26)
+    Page 2 includes (if STL file available):
+    - 3D part preview rendered from STL
+    - Bounding box dimensions overlay
+    - Falls back gracefully to page 1 only if rendering fails
     """
     buffer = BytesIO()
 
@@ -234,6 +326,43 @@ def generate_quote_pdf(processing_result: ProcessingResult) -> bytes:
     """
 
     elements.append(Paragraph(disclaimer_text, disclaimer_style))
+
+    # Page 2: STL Snapshot (with graceful fallback)
+    if processing_result.stl_file_path:
+        img_buffer = _render_stl_snapshot(
+            processing_result.stl_file_path,
+            processing_result.features.bounding_box_x,
+            processing_result.features.bounding_box_y,
+            processing_result.features.bounding_box_z
+        )
+
+        if img_buffer:
+            # Add page break
+            elements.append(PageBreak())
+
+            # Add page 2 heading
+            page2_heading = ParagraphStyle(
+                'Page2Heading',
+                parent=styles['Heading1'],
+                fontSize=18,
+                textColor=colors.HexColor('#2c3e50'),
+                spaceAfter=12,
+                spaceBefore=6,
+                alignment=TA_CENTER
+            )
+            elements.append(Paragraph("3D Part Preview", page2_heading))
+            elements.append(Spacer(1, 6*mm))
+
+            # Add STL snapshot image
+            # Image width: 170mm (fits within page margins)
+            img = Image(img_buffer, width=170*mm, height=127.5*mm)
+            elements.append(img)
+
+            logger.info("Successfully added STL snapshot to PDF page 2")
+        else:
+            logger.warning("STL rendering failed, PDF will only contain page 1")
+    else:
+        logger.info("No STL file path provided, PDF will only contain page 1")
 
     # Build PDF
     doc.build(elements)
