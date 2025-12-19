@@ -1542,7 +1542,7 @@ Updated `app.py` Streamlit UI:
 
 ---
 
-### `text` Prompt 28 — Training script v0 (DB → model → pricing_coefficients.json)
+### `text` Prompt 28 — Training script v0 (DB → model → pricing_coefficients.json) [COMPLETE]
 
 Implement `training/train_model.py`:
 
@@ -1557,6 +1557,42 @@ Implement `training/train_model.py`:
 **Acceptance:**
 
 * App shows R² score and blocks quoting if r² == 0.
+
+**Implementation:** Created `training/train_model.py` with ML training pipeline:
+- `train_model(db_path, output_path)` function:
+  * Reads training_parts table into pandas DataFrame
+  * Validates minimum 2 rows for training
+  * Trains StandardScaler for feature normalization
+  * Trains LinearRegression model on normalized features
+  * Calculates R² score
+  * Writes pricing_coefficients.json with:
+    - base_price (model intercept)
+    - minimum_order_price (30.0 EUR)
+    - coefficients dict (all required features)
+    - scaler_mean dict (normalization parameters)
+    - scaler_std dict (normalization parameters)
+    - r_squared (model quality metric)
+    - last_updated (ISO timestamp)
+  * Creates output directory if missing
+- `InsufficientTrainingDataError` exception for validation
+- CLI entry point with argparse (main function)
+- Default: data/training_parts.db → config/pricing_coefficients.json
+
+**Tests:** 19 comprehensive tests in `tests/test_train_model.py` (TDD approach):
+- Function existence and file creation
+- JSON structure validation
+- All required fields present and correct types
+- Coefficients for all required features
+- Scaler statistics completeness
+- R² > 0 with synthetic correlated data
+- Minimum order price = 30.0 EUR
+- Error handling (empty DB, insufficient data)
+- Output compatibility with pricing_config loader
+- Directory creation
+
+**Tests:** All 19 training tests passing, 357 total tests passing
+
+**Commit:** 93ca0a3
 
 ---
 
