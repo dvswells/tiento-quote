@@ -1596,7 +1596,7 @@ Implement `training/train_model.py`:
 
 ---
 
-### `text` Prompt 29 — Tighten error handling + logging + final wiring
+### `text` Prompt 29 — Tighten error handling + logging + final wiring [COMPLETE]
 
 Polish pass:
 
