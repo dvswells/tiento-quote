@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: tiento-quote
+    env: python
+    region: frankfurt  # Change to your preferred region
+    plan: free  # Change to 'starter' or higher for production
+    branch: main  # Change to your main branch name if different
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "bash start.sh"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DATABASE_PATH
+        value: training/training_data.db
+      - key: UPLOADS_PATH
+        value: uploads
+      - key: TEMP_PATH
+        value: temp
+    disk:
+      name: tiento-data
+      mountPath: /opt/render/project/src
+      sizeGB: 1  # Free tier allows up to 1GB
