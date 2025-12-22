@@ -102,6 +102,16 @@ if uploaded_file is not None:
                 result = process_quote(tmp_step_path, quantity, pricing_config_path)
                 st.success("✓ Complete")
 
+        # Check for errors from pipeline
+        if result.errors:
+            st.error("⚠️ Processing failed with the following errors:")
+            for error in result.errors:
+                st.error(f"• {error}")
+
+            # Clean up temporary STEP file
+            os.unlink(tmp_step_path)
+            st.stop()
+
         # Generate STL for 3D visualization
         settings = get_settings()
         tmp_stl_path = None
