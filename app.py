@@ -81,15 +81,7 @@ if uploaded_file is not None:
             with st.spinner("Uploading file..."):
                 st.success("✓ File uploaded")
 
-            with st.spinner("Validating dimensions..."):
-                # This will be done in the pipeline
-                st.success("✓ Dimensions validated")
-
-            with st.spinner("Detecting features..."):
-                # Detect features using pipeline
-                st.success("✓ Features detected")
-
-            with st.spinner("Calculating price..."):
+            with st.spinner("Processing STEP file..."):
                 # Calculate quote
                 pricing_config_path = "config/pricing_coefficients.json"
 
@@ -100,7 +92,53 @@ if uploaded_file is not None:
 
                 # Process quote using pipeline
                 result = process_quote(tmp_step_path, quantity, pricing_config_path)
-                st.success("✓ Complete")
+                st.success("✓ Processing complete")
+
+        st.divider()
+
+        # Show detected features immediately
+        st.subheader("🔍 Detected Features")
+        col_dim, col_feat = st.columns(2)
+
+        with col_dim:
+            st.markdown("**Dimensions:**")
+            bbox_conf = result.confidence.bounding_box
+            vol_conf = result.confidence.volume
+            st.markdown(f"""
+- **Bounding Box:** {result.features.bounding_box_x:.1f} × {result.features.bounding_box_y:.1f} × {result.features.bounding_box_z:.1f} mm
+  {f"🟢 {bbox_conf*100:.0f}% confidence" if bbox_conf >= 0.8 else f"🟡 {bbox_conf*100:.0f}% confidence"}
+- **Volume:** {result.features.volume:.0f} mm³
+  {f"🟢 {vol_conf*100:.0f}% confidence" if vol_conf >= 0.8 else f"🟡 {vol_conf*100:.0f}% confidence"}
+            """)
+
+        with col_feat:
+            st.markdown("**Features:**")
+            holes_conf = result.confidence.through_holes
+            blind_conf = result.confidence.blind_holes
+            pockets_conf = result.confidence.pockets
+
+            features_list = []
+            features_list.append(f"**Through holes:** {result.features.through_hole_count} {f'🟢 {holes_conf*100:.0f}%' if holes_conf >= 0.8 else f'🟡 {holes_conf*100:.0f}%' if holes_conf > 0 else '⚪ Not detected'}")
+            features_list.append(f"**Blind holes:** {result.features.blind_hole_count} {f'🟢 {blind_conf*100:.0f}%' if blind_conf >= 0.8 else f'🟡 {blind_conf*100:.0f}%' if blind_conf > 0 else '⚪ Not detected'}")
+            features_list.append(f"**Pockets:** {result.features.pocket_count} {f'🟢 {pockets_conf*100:.0f}%' if pockets_conf >= 0.8 else f'🟡 {pockets_conf*100:.0f}%' if pockets_conf > 0 else '⚪ Not detected'}")
+
+            if result.features.non_standard_hole_count > 0:
+                features_list.append(f"**Non-standard features:** {result.features.non_standard_hole_count}")
+
+            st.markdown("- " + "\n- ".join(features_list))
+
+        # Show DFM warnings early if any
+        if result.dfm_issues:
+            st.warning("⚠️ **Design for Manufacturing Warnings:**")
+            for issue in result.dfm_issues:
+                if issue.severity == "critical":
+                    st.error(f"🔴 CRITICAL: {issue.message}")
+                elif issue.severity == "warning":
+                    st.warning(f"🟡 WARNING: {issue.message}")
+                else:
+                    st.info(f"💬 INFO: {issue.message}")
+
+        st.divider()
 
         # Check for errors from pipeline
         if result.errors:
