@@ -16,7 +16,6 @@ services:
         value: uploads
       - key: TEMP_PATH
         value: temp
-    disk:
-      name: tiento-data
-      mountPath: /opt/render/project/src
-      sizeGB: 1  # Free tier allows up to 1GB
+    # NOTE: Free tier does not support persistent disks
+    # Uploaded files will be lost when the service restarts
+    # Upgrade to Starter plan ($7/mo) to add persistent disk storage
