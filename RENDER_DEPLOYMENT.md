@@ -12,7 +12,13 @@ This guide explains how to deploy the Tiento Quote CNC machining calculator to R
 
 ### Option 1: Using Blueprint (Recommended)
 
-This method uses the `render.yaml` file for automated deployment.
+This method uses a YAML configuration file for automated deployment.
+
+**Choose your configuration:**
+- **`render.yaml`**: Free tier (no persistent storage, uploads lost on restart)
+- **`render-paid.yaml`**: Starter tier ($7/mo, includes 1GB persistent disk)
+
+#### Using Free Tier (render.yaml)
 
 1. **Push your code to GitHub/GitLab/Bitbucket**
    ```bash
@@ -23,7 +29,7 @@ This method uses the `render.yaml` file for automated deployment.
    - Go to https://dashboard.render.com/blueprints
    - Click "New Blueprint Instance"
    - Connect your repository
-   - Render will automatically detect `render.yaml`
+   - Select `render.yaml` as the blueprint file
    - Click "Apply" to deploy
 
 3. **Wait for deployment**
@@ -32,6 +38,16 @@ This method uses the `render.yaml` file for automated deployment.
 
 4. **Access your app**
    - Once deployed, Render provides a URL like `https://tiento-quote.onrender.com`
+
+**⚠️ Free Tier Limitation**: Uploaded STEP files are stored in memory only and will be lost when the service restarts or redeployes. Each quote request is independent - perfect for testing and demos.
+
+#### Using Paid Tier (render-paid.yaml)
+
+To use persistent storage:
+
+1. Rename `render-paid.yaml` to `render.yaml` (or manually configure the disk in the Render dashboard)
+2. Follow the same blueprint deployment steps above
+3. Cost: $7/month for Starter plan with 1GB persistent disk
 
 ### Option 2: Manual Web Service Setup
 
@@ -57,12 +73,15 @@ If you prefer manual configuration:
    - `UPLOADS_PATH`: `uploads`
    - `TEMP_PATH`: `temp`
 
-4. **Create a Disk** (for persistent storage)
-   - In the service settings, go to "Disks"
-   - Click "Add Disk"
-   - **Name**: `tiento-data`
-   - **Mount Path**: `/opt/render/project/src`
-   - **Size**: 1 GB (free tier limit)
+4. **Create a Disk** (optional, requires paid plan)
+   - **⚠️ Skip this step for free tier** - disks are not supported
+   - For Starter plan or higher:
+     - In the service settings, go to "Disks"
+     - Click "Add Disk"
+     - **Name**: `tiento-data`
+     - **Mount Path**: `/data`
+     - **Size**: 1 GB (can increase on paid plans)
+   - Update environment variables to use `/data` paths if using a disk
 
 5. **Deploy**
    - Click "Create Web Service"
@@ -72,9 +91,16 @@ If you prefer manual configuration:
 
 ### Free Tier Limitations
 
+- **No persistent disk storage**: Uploaded files are lost on restart/redeploy (see note below)
 - **Sleep after 15 minutes of inactivity**: First request after sleep takes 30-60 seconds
 - **750 hours/month**: Shared across all free services
 - **Limited resources**: 512MB RAM, 0.1 CPU
+
+**Note on file storage**: The free tier doesn't support persistent disks, but this app works fine for demos because:
+- Each quote is calculated immediately from the uploaded STEP file
+- The PDF quote is generated and downloaded in the same request
+- No need to store files between sessions
+- The pricing model config is part of the code repository (always available)
 
 ### Upgrading to Paid Plan
 
@@ -85,9 +111,10 @@ For production use, consider upgrading to **Starter ($7/month)** or higher:
 
 ### File Uploads
 
-- Uploaded STEP files are stored in the `uploads/` directory
-- With the disk configuration, files persist between deployments
-- Without a disk, uploads are lost when the service restarts
+- Uploaded STEP files are stored temporarily in the `uploads/` directory
+- **Free tier**: Files are ephemeral (lost on restart/redeploy) - this is fine since quotes are instant
+- **Paid tier with disk**: Files persist between deployments if you configure a disk
+- The app processes files immediately, so persistence is only needed if you want to keep upload history
 
 ### Pricing Model
 

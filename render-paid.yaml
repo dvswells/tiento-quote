@@ -1,0 +1,26 @@
+# Render configuration for PAID TIER (Starter plan or higher)
+# This version includes persistent disk storage for uploaded files
+# Cost: $7/month minimum
+
+services:
+  - type: web
+    name: tiento-quote
+    env: python
+    region: frankfurt  # Change to your preferred region
+    plan: starter  # Starter plan required for disk support
+    branch: main  # Change to your main branch name if different
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "bash start.sh"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DATABASE_PATH
+        value: /data/training/training_data.db
+      - key: UPLOADS_PATH
+        value: /data/uploads
+      - key: TEMP_PATH
+        value: /data/temp
+    disk:
+      name: tiento-data
+      mountPath: /data
+      sizeGB: 1  # Can increase up to 512GB on paid plans
